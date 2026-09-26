@@ -24,9 +24,7 @@ Dispositivo desconocido
 plotter, cámara, etc.)
 ~~~
 
-## Funcionamiento
-
-La aplicación será una **web local mediante localhost**. La computadora de campo ejecutará la aplicación y utilizará el navegador únicamente como interfaz gráfica.
+ProyectoRed será una **web local mediante localhost**. La computadora de campo ejecutará la aplicación y utilizará el navegador como interfaz gráfica.
 
 No se requiere durante el uso de campo:
 
@@ -40,24 +38,7 @@ La aplicación final se publicará de forma autónoma para evitar exigir que la 
 
 ## Primera versión
 
-La interfaz inicial será deliberadamente sencilla:
-
-~~~text
-+---------------------------------------------+
-|                 PROYECTO RED                |
-+---------------------------------------------+
-|                                             |
-|  Identificador de dispositivos de red       |
-|                                             |
-|  Interfaz de red                            |
-|  [ Seleccione una interfaz...        v ]    |
-|                                             |
-|              [ Comenzar ]                  |
-|                                             |
-|  Estado: Esperando                          |
-|                                             |
-+---------------------------------------------+
-~~~
+La primera versión será deliberadamente pequeña.
 
 El resultado esperado:
 
@@ -66,6 +47,37 @@ IP       10.0.1.1
 MAC      AA:BB:CC:DD:EE:FF
 Nombre   SWITCH-PISO-1
 ~~~
+
+El nombre puede no estar disponible y la aplicación debe poder indicar esa situación.
+
+No forman parte de esta primera versión el escaneo completo de redes, descubrimiento masivo de subredes, detección de puertos, identificación del sistema operativo, SNMP, historial, topología ni mapas de red.
+
+## Arquitectura prevista
+
+~~~text
+Navegador
+    |
+    | localhost
+    v
+ASP.NET Core MVC
+    |
+    v
+Lógica de detección
+    |
+    v
+Interfaz Ethernet física
+    |
+    v
+Captura / análisis
+    |
+    +--> ARP
+    +--> LLDP
+    |
+    v
+IP + MAC + Nombre
+~~~
+
+La interfaz web y la lógica de descubrimiento deben mantenerse separadas para poder ampliar el proyecto posteriormente.
 
 ## Tecnologías
 
@@ -89,33 +101,7 @@ Nombre   SWITCH-PISO-1
 - ARP.
 - LLDP.
 
-Npcap y las bibliotecas de captura todavía no forman parte de la implementación actual. La instalación/preparación de Npcap deberá automatizarse más adelante.
-
-## Arquitectura prevista
-
-~~~text
-Navegador
-    |
-    v
-ASP.NET Core MVC
-    |
-    v
-Lógica de detección
-    |
-    v
-Interfaz Ethernet física
-    |
-    v
-Captura / análisis
-    |
-    +--> ARP
-    +--> LLDP
-    |
-    v
-IP + MAC + Nombre
-~~~
-
-La interfaz web y la lógica de descubrimiento deben mantenerse desacopladas para permitir futuras ampliaciones.
+Npcap y las bibliotecas de captura todavía no forman parte de la implementación actual. La preparación/instalación de Npcap deberá automatizarse posteriormente.
 
 ## Estructura actual
 
@@ -126,6 +112,7 @@ ProyectoRed/
 |-- README.md
 |-- .gitignore
 |-- docs/
+|   +-- PROMPT_CONTINUIDAD.md
 |-- pruebas/
 +-- src/
     +-- ProyectoRed.Web/
@@ -146,7 +133,7 @@ Ya se encuentran implementados y probados:
 - Configuración en .NET 10.
 - Ejecución local mediante localhost.
 - Página inicial personalizada.
-- Selector de interfaz de red.
+- Selector inicial de interfaz de red.
 - Lectura de interfaces mediante NetworkInterface.GetAllNetworkInterfaces().
 - Obtención del nombre de interfaz.
 - Obtención de la descripción.
@@ -174,20 +161,7 @@ veth...
 
 Por lo tanto, todavía debemos resolver de forma portable cómo identificar la interfaz Ethernet física que debe utilizar ProyectoRed.
 
-## Fuera del alcance inicial
-
-- Escaneo completo de redes.
-- Descubrimiento de todas las subredes.
-- Detección de puertos.
-- Identificación del sistema operativo.
-- SNMP.
-- Historial.
-- Topología.
-- Mapas de red.
-
-Estas funciones quedan para etapas futuras.
-
-## Evolución prevista
+## Evolución futura
 
 ~~~text
 V1  IP + MAC + Nombre
@@ -213,7 +187,7 @@ V7  Mapa visual de red
 
 ## Forma de desarrollo
 
-El proyecto tiene además un objetivo educativo. Se está construyendo como práctica de C#, ASP.NET Core y redes.
+El proyecto tiene también un objetivo educativo. Se está construyendo como práctica de C#, ASP.NET Core y redes.
 
 La metodología acordada es:
 
@@ -228,15 +202,8 @@ La metodología acordada es:
 
 La prioridad es que el código sea comprendido y no solamente copiado.
 
-## Continuidad del proyecto
+## Continuidad
 
-Al retomar el proyecto, conservar estas decisiones:
+El contexto completo para retomar la tutoría y las decisiones técnicas del proyecto se encuentra en:
 
-- Aplicación web local mediante localhost.
-- La computadora de campo es la que tiene conectado físicamente el UTP.
-- La primera función es identificar IP, MAC y nombre.
-- No realizar todavía un escaneo completo de redes.
-- Usar solamente la interfaz Ethernet física para la detección.
-- Mantener el desarrollo en .NET 10.
-- Automatizar Npcap más adelante.
-- Continuar el desarrollo paso a paso y archivo por archivo.
+[docs/PROMPT_CONTINUIDAD.md](docs/PROMPT_CONTINUIDAD.md)
