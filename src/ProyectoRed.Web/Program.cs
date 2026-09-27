@@ -1,21 +1,25 @@
+using System.Diagnostics;
 using ProyectoRed.Web.Services;
+
+const string UrlLocal = "http://127.0.0.1:5094";
+
 var builder = WebApplication.CreateBuilder(args);
+
+builder.WebHost.UseUrls(UrlLocal);
 
 // Add services to the container.
 builder.Services.AddControllersWithViews();
 builder.Services.AddScoped<InterfazRedService>();
 builder.Services.AddScoped<CapturadorPaquetesService>();
+
 var app = builder.Build();
 
 // Configure the HTTP request pipeline.
 if (!app.Environment.IsDevelopment())
 {
     app.UseExceptionHandler("/Home/Error");
-    // The default HSTS value is 30 days. You may want to change this for production scenarios, see https://aka.ms/aspnetcore-hsts.
-    app.UseHsts();
 }
 
-app.UseHttpsRedirection();
 app.UseRouting();
 
 app.UseAuthorization();
@@ -27,5 +31,20 @@ app.MapControllerRoute(
     pattern: "{controller=Home}/{action=Index}/{id?}")
     .WithStaticAssets();
 
+// En Windows de campo la aplicación se abre desde el navegador predeterminado.
+// En Linux se mantiene el comportamiento normal de desarrollo sin abrir interfaz gráfica.
+app.Lifetime.ApplicationStarted.Register(() =>
+{
+    if (!OperatingSystem.IsWindows())
+    {
+        return;
+    }
+
+    Process.Start(new ProcessStartInfo
+    {
+        FileName = UrlLocal,
+        UseShellExecute = true
+    });
+});
 
 app.Run();
