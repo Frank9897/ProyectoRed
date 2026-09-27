@@ -90,41 +90,24 @@ ProyectoRed/
 
 Ya existe un proyecto ASP.NET Core MVC en .NET 10 y se comprobó su ejecución mediante localhost.
 
+Se creó el modelo Models/InterfazRed.cs con estas propiedades:
+
+- Nombre.
+- DireccionIP.
+- DireccionMac.
+- Tipo.
+
+El modelo también tiene un constructor que recibe esos cuatro datos y los asigna a sus propiedades.
+
+También se creó Services/InterfazRedService.cs. Actualmente el servicio:
+
+- obtiene las interfaces con NetworkInterface.GetAllNetworkInterfaces();
+- crea una List<InterfazRed> vacía;
+- todavía debe recorrer las interfaces, extraer los datos necesarios y construir los objetos InterfazRed.
+
 La página inicial personalizada contiene conceptualmente:
 
-+---------------------------------------------+
-|                 PROYECTO RED                |
-+---------------------------------------------+
-|                                             |
-|  Identificador de dispositivos de red       |
-|                                             |
-|  Interfaz de red                            |
-|  [ Seleccione una interfaz...        v ]    |
-|                                             |
-|              [ Comenzar ]                  |
-|                                             |
-|  Estado: Esperando                          |
-|                                             |
-+---------------------------------------------+
-
-Se trabajó con NetworkInterface.GetAllNetworkInterfaces() para obtener las interfaces del equipo.
-
-Se practicó la obtención de:
-
-- Name.
-- Description.
-- OperationalStatus.
-- NetworkInterfaceType.
-- GetPhysicalAddress().
-- GetIPProperties().
-- UnicastAddresses.
-- AddressFamily.InterNetwork.
-
-También se practicó la conversión de PhysicalAddress a una MAC legible utilizando GetAddressBytes(), BitConverter y Replace().
-
-Se aprendió a pasar una colección desde un Controller hacia una vista Razor mediante return View(coleccion) y a recorrerla con @foreach.
-
-## Aprendizaje de MVC y Razor
+## Aprendizaje de MVC y ritmo de trabajo
 
 El estudiante no quiere recibir todo el código terminado.
 
@@ -138,11 +121,13 @@ La metodología debe ser:
 6. Corregir errores y explicar el motivo.
 7. Mostrar una posible versión corregida después del intento.
 
-Avanzar paso a paso y archivo por archivo.
+Avanzar paso a paso y archivo por archivo, pero sin ir innecesariamente lento. Cuando una parte sea sencilla o ya haya sido explicada, se pueden agrupar varios pequeños cambios relacionados dentro del mismo paso.
 
 No crear de golpe múltiples servicios, modelos o capas si todavía no son necesarios.
 
 Cuando aparezca Razor/CSHTML y el estudiante no conozca el concepto, explicar primero lo básico antes de pedirle código.
+
+El objetivo es que el estudiante escriba y entienda el código, no que simplemente copie fragmentos completos.
 
 ## Convenciones de código
 
@@ -193,6 +178,24 @@ V4 — LLDP y vecinos
 V5 — Relaciones entre dispositivos
 V6 — Descubrimiento de topología
 V7 — Mapa visual de red
+
+## Próximo paso inmediato
+
+Completar InterfazRedService.ObtenerInterfaces() para transformar los objetos NetworkInterface obtenidos del sistema en objetos propios InterfazRed.
+
+El flujo previsto es:
+
+NetworkInterface[]
+|
++--> extraer nombre
++--> extraer IPv4
++--> extraer MAC
++--> extraer tipo
+|
+v
+List<InterfazRed>
+
+Una vez que esto funcione, se deberá conectar el servicio con el Controller y hacer que la vista utilice el nuevo modelo, manteniendo la selección de la interfaz Ethernet para la etapa posterior de descubrimiento.
 
 ## Problema pendiente actual
 
