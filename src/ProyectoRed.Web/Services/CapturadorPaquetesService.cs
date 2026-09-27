@@ -5,11 +5,11 @@ namespace ProyectoRed.Web.Services;
 
 public class CapturadorPaquetesService
 {
-    private bool paqueteMostrado;
+    private bool arpMostrado;
 
     public async Task CapturarAsync(string nombreInterfaz)
     {
-        paqueteMostrado = false;
+        arpMostrado = false;
 
         CaptureDeviceList dispositivos =
             CaptureDeviceList.Instance;
@@ -43,8 +43,8 @@ public class CapturadorPaquetesService
         {
             dispositivoSeleccionado.StartCapture();
 
-            // La prueba dura solamente unos segundos.
-            // Así evitamos dejar la captura funcionando indefinidamente.
+            // La captura de esta prueba dura como máximo unos segundos.
+            // No dejamos el capturador ejecutándose indefinidamente.
             await Task.Delay(TimeSpan.FromSeconds(5));
         }
         finally
@@ -56,6 +56,12 @@ public class CapturadorPaquetesService
 
             dispositivoSeleccionado.Close();
 
+            if (!arpMostrado)
+            {
+                Console.WriteLine(
+                    "No se encontró ningún paquete ARP durante la prueba.");
+            }
+
             Console.WriteLine("Captura finalizada.");
         }
     }
@@ -64,23 +70,20 @@ public class CapturadorPaquetesService
         object sender,
         PacketCapture captura)
     {
-        // No mostramos todas las tramas recibidas.
-        // Solo necesitamos una para comprobar el análisis Ethernet.
-        if (paqueteMostrado)
+        // Ya encontramos un ARP para esta prueba.
+        // Ignoramos los demás paquetes para no generar un bucle de salida.
+        if (arpMostrado)
         {
             return;
         }
 
         var capturaBruta = captura.GetPacket();
 
-        // En esta etapa solo procesamos tramas Ethernet.
         if (capturaBruta.LinkLayerType != LinkLayers.Ethernet)
         {
             return;
         }
 
-        // PacketDotNet interpreta los bytes capturados
-        // según la capa de enlace de la captura.
         Packet paquete =
             Packet.ParsePacket(
                 capturaBruta.LinkLayerType,
@@ -94,14 +97,28 @@ public class CapturadorPaquetesService
             return;
         }
 
-        Console.WriteLine(
-            $"Ethernet | " +
-            $"Origen: {ethernet.SourceHardwareAddress} | " +
-            $"Destino: {ethernet.DestinationHardwareAddress} | " +
-            $"Tipo: {ethernet.Type} " +
-            $"(0x{((ushort)ethernet.Type):X4}) | " +
-            $"Longitud: {capturaBruta.Data.Length} bytes");
+        // Solo nos interesan las tramas ARP.
+        if (ethernet.Type != EthernetType.Arp)
+        {
+            return;
+        }
 
-        paqueteMostrado = true;
+        ArpPacket arp =
+            ethernet.PayloadPacket as ArpPacket;
+
+        if (arp == null)
+        {
+            return;
+        }
+
+        Console.WriteLine(
+            $"ARP | " +
+            $"Operación: {arp.Operation} | " +
+            $"IP origen: {arp.SenderProtocolAddress} | " +
+            $"MAC origen: {arp.SenderHardwareAddress} | " +
+            $"IP destino: {arp.TargetProtocolAddress} | " +
+            $"MAC destino: {arp.TargetHardwareAddress}");
+
+        arpMostrado = true;
     }
 }
