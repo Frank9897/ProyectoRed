@@ -192,14 +192,28 @@ Ya se encuentran implementados:
 
 ### Verificación actual
 
-En Debian ya se comprobó que:
+En Debian y Windows ya se comprobó que:
 
-- enp2s0 puede abrirse con SharpPcap ejecutando la aplicación con permisos adecuados.
+- SharpPcap puede abrir la interfaz Ethernet física con permisos adecuados.
+- En Windows, Npcap proporciona la captura necesaria y la correspondencia entre `NetworkInterface.Id` y el GUID de `\\Device\\NPF_{GUID}` funciona.
 - La captura Ethernet funciona.
 - PacketDotNet puede interpretar paquetes Ethernet.
-- En una prueba de 5 segundos no apareció LLDP.
+- En las pruebas realizadas no apareció LLDP.
 
 La ausencia de LLDP no implica un fallo del capturador; el dispositivo o la red de prueba puede no estar enviando anuncios LLDP.
+
+### Descubrimiento actual
+
+La captura ya se utiliza para obtener información del dispositivo remoto en una conexión física directa:
+
+- La MAC se obtiene del origen Ethernet remoto.
+- La IPv4 se obtiene del emisor de ARP o de un paquete IPv4 cuando aparece.
+- El nombre se obtiene del TLV System Name de LLDP cuando está presente.
+- La captura está limitada a unos segundos para evitar loops y no ejecutarse indefinidamente.
+
+Esta estrategia es **pasiva** y está pensada para el escenario de conexión directa. No realiza todavía un escaneo de toda la subred.
+
+La ausencia de tráfico significa que no siempre será posible obtener toda la información: un equipo silencioso puede no proporcionar una IPv4 o un nombre durante la ventana de captura.
 
 ## Alcance de la primera versión
 
@@ -246,9 +260,9 @@ V7  Mapa visual de red
 
 ## Próximo paso
 
-Antes de continuar agregando mecanismos de descubrimiento, queda preparada la parte de **despliegue autónomo para Windows**.
+La publicación autónoma de Windows ya fue probada correctamente y la captura con Npcap también fue validada.
 
-Después se continuará con la estrategia de descubrimiento de IP/MAC/Nombre. No se debe tomar el primer paquete ARP observado como si fuera automáticamente el dispositivo objetivo, porque puede pertenecer a otro equipo de la red.
+El siguiente trabajo es comprobar el descubrimiento pasivo en un escenario real con un dispositivo conectado directamente por UTP y, a partir de los resultados, mejorar la forma de presentar IP/MAC/Nombre sin convertir ProyectoRed en un scanner de subred.
 
 ## Forma de desarrollo
 
