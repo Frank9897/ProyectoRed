@@ -1,5 +1,5 @@
 using PacketDotNet;
-using PacketDotNet.LLDP;
+using PacketDotNet.Lldp;
 using SharpPcap;
 
 namespace ProyectoRed.Web.Services;
@@ -44,7 +44,7 @@ public class CapturadorPaquetesService
         {
             dispositivoSeleccionado.StartCapture();
 
-            // La prueba dura solamente unos segundos.
+            // La captura dura solamente unos segundos.
             // No dejamos el capturador ejecutándose indefinidamente.
             await Task.Delay(TimeSpan.FromSeconds(5));
         }
@@ -99,13 +99,13 @@ public class CapturadorPaquetesService
         }
 
         // LLDP utiliza el EtherType 0x88CC.
-        if (ethernet.Type != EthernetType.LLDP)
+        if (ethernet.Type != EthernetType.Lldp)
         {
             return;
         }
 
-        LLDPPacket lldp =
-            ethernet.PayloadPacket as LLDPPacket;
+        LldpPacket lldp =
+            ethernet.PayloadPacket as LldpPacket;
 
         if (lldp == null)
         {
@@ -116,13 +116,13 @@ public class CapturadorPaquetesService
 
         foreach (var tlv in lldp)
         {
-            if (tlv.Type == TLVTypes.SystemName)
+            if (tlv.Type == TlvType.SystemName)
             {
-                SystemName systemName =
-                    (SystemName)tlv;
+                SystemNameTlv systemName =
+                    (SystemNameTlv)tlv;
 
                 nombreEquipo =
-                    systemName.StringValue;
+                    systemName.Name;
 
                 break;
             }
