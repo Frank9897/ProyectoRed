@@ -1,0 +1,42 @@
+name: Build ProyectoRed
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configurar .NET 10
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Restaurar
+        run: dotnet restore src/ProyectoRed.Web/ProyectoRed.Web.csproj
+
+      - name: Compilar
+        run: dotnet build src/ProyectoRed.Web/ProyectoRed.Web.csproj -c Release --no-restore
+
+      - name: Publicar Windows x64
+        run: dotnet publish src/ProyectoRed.Web/ProyectoRed.Web.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:PublishTrimmed=false -p:PublishReadyToRun=false --no-restore -o artifacts/windows-x64
+
+      - name: Verificar ejecutable publicado
+        shell: pwsh
+        run: |
+          if (-not (Test-Path "artifacts/windows-x64/ProyectoRed.Web.exe")) {
+            throw "No se encontro ProyectoRed.Web.exe en la publicacion."
+          }
+
+      - name: Guardar artefacto
+        uses: actions/upload-artifact@v4
+        with:
+          name: ProyectoRed-windows-x64
+          path: artifacts/windows-x64/
