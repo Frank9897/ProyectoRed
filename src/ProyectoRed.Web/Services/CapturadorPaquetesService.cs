@@ -1,15 +1,16 @@
 using PacketDotNet;
+using PacketDotNet.LLDP;
 using SharpPcap;
 
 namespace ProyectoRed.Web.Services;
 
 public class CapturadorPaquetesService
 {
-    private bool arpMostrado;
+    private bool lldpMostrado;
 
     public async Task CapturarAsync(string nombreInterfaz)
     {
-        arpMostrado = false;
+        lldpMostrado = false;
 
         CaptureDeviceList dispositivos =
             CaptureDeviceList.Instance;
@@ -43,7 +44,7 @@ public class CapturadorPaquetesService
         {
             dispositivoSeleccionado.StartCapture();
 
-            // La captura de esta prueba dura como máximo unos segundos.
+            // La prueba dura solamente unos segundos.
             // No dejamos el capturador ejecutándose indefinidamente.
             await Task.Delay(TimeSpan.FromSeconds(5));
         }
@@ -56,10 +57,10 @@ public class CapturadorPaquetesService
 
             dispositivoSeleccionado.Close();
 
-            if (!arpMostrado)
+            if (!lldpMostrado)
             {
                 Console.WriteLine(
-                    "No se encontró ningún paquete ARP durante la prueba.");
+                    "No se encontró ningún paquete LLDP durante la prueba.");
             }
 
             Console.WriteLine("Captura finalizada.");
@@ -70,9 +71,9 @@ public class CapturadorPaquetesService
         object sender,
         PacketCapture captura)
     {
-        // Ya encontramos un ARP para esta prueba.
-        // Ignoramos los demás paquetes para no generar un bucle de salida.
-        if (arpMostrado)
+        // Solo necesitamos un paquete LLDP para esta prueba.
+        // Ignoramos los siguientes para no generar una salida interminable.
+        if (lldpMostrado)
         {
             return;
         }
@@ -97,28 +98,41 @@ public class CapturadorPaquetesService
             return;
         }
 
-        // Solo nos interesan las tramas ARP.
-        if (ethernet.Type != EthernetType.Arp)
+        // LLDP utiliza el EtherType 0x88CC.
+        if (ethernet.Type != EthernetType.LLDP)
         {
             return;
         }
 
-        ArpPacket arp =
-            ethernet.PayloadPacket as ArpPacket;
+        LLDPPacket lldp =
+            ethernet.PayloadPacket as LLDPPacket;
 
-        if (arp == null)
+        if (lldp == null)
         {
             return;
+        }
+
+        string nombreEquipo = string.Empty;
+
+        foreach (var tlv in lldp)
+        {
+            if (tlv.Type == TLVTypes.SystemName)
+            {
+                SystemName systemName =
+                    (SystemName)tlv;
+
+                nombreEquipo =
+                    systemName.StringValue;
+
+                break;
+            }
         }
 
         Console.WriteLine(
-            $"ARP | " +
-            $"Operación: {arp.Operation} | " +
-            $"IP origen: {arp.SenderProtocolAddress} | " +
-            $"MAC origen: {arp.SenderHardwareAddress} | " +
-            $"IP destino: {arp.TargetProtocolAddress} | " +
-            $"MAC destino: {arp.TargetHardwareAddress}");
+            $"LLDP | " +
+            $"MAC: {ethernet.SourceHardwareAddress} | " +
+            $"Nombre: {nombreEquipo}");
 
-        arpMostrado = true;
+        lldpMostrado = true;
     }
 }
