@@ -49,19 +49,19 @@ La combinación de self-contained + single-file es específica del sistema opera
 
 ## Resultado esperado
 
-El ejecutable de publicación se genera dentro de:
+El script `publicar-windows.bat` genera la publicación en:
 
 ~~~text
-src/ProyectoRed.Web/bin/Release/net10.0/win-x64/publish/
+dist/windows-x64/
 ~~~
 
-El objetivo del perfil es obtener:
+El artefacto principal es:
 
 ~~~text
-ProyectoRed.Web.exe
+dist/windows-x64/ProyectoRed.Web.exe
 ~~~
 
-como artefacto principal de distribución.
+La carpeta `dist` es un artefacto local de compilación y no forma parte del repositorio.
 
 ## Ejecución
 
@@ -105,6 +105,42 @@ Npcap                 -> componente del sistema para captura
 ~~~
 
 Más adelante se puede preparar un instalador de campo que compruebe Npcap e indique al técnico qué falta, o integrar un instalador de Npcap OEM cuando corresponda.
+
+## Crear el instalador
+
+Después de ejecutar `publicar-windows.bat`, se puede crear el instalador con:
+
+~~~bat
+installer\crear-instalador-windows.bat
+~~~
+
+Este paso utiliza **Inno Setup 6** en la PC de desarrollo.
+
+El instalador resultante se genera en:
+
+~~~text
+installer/dist/ProyectoRed-Setup.exe
+~~~
+
+El instalador:
+
+- copia la publicación self-contained de ProyectoRed;
+- crea accesos directos;
+- instala en Program Files;
+- comprueba si existe el servicio de Npcap;
+- avisa si Npcap no está instalado.
+
+La ausencia de Npcap no impide instalar la aplicación, pero sí impide realizar la captura Ethernet.
+
+## Npcap y redistribución
+
+Npcap no puede resolverse copiando `wpcap.dll` dentro del ejecutable de ProyectoRed, porque la captura depende también del controlador del sistema.
+
+El repositorio no contiene el instalador gratuito de Npcap.
+
+Para una distribución que instale Npcap automáticamente junto con ProyectoRed se necesita una versión Npcap OEM con derechos de redistribución. El instalador de ProyectoRed ya tiene preparada la sección donde se podrá ejecutar el instalador OEM cuando corresponda.
+
+No guardar credenciales, instaladores OEM ni archivos con licencia dentro del repositorio.
 
 ## Verificación inicial
 
