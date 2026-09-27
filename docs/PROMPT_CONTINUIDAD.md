@@ -200,18 +200,30 @@ Ya se encuentran implementados:
 - Análisis Ethernet mediante PacketDotNet.
 - Detección de paquetes LLDP.
 - Lectura del System Name de LLDP cuando está presente.
+- Correspondencia entre la interfaz de .NET y el dispositivo de captura de SharpPcap mediante GUID en Windows.
+- Captura pasiva de MAC e IPv4 del dispositivo remoto cuando aparece tráfico Ethernet/ARP/IPv4.
+- Endpoint de descubrimiento desde HomeController.
+- Botón Comenzar conectado a la detección desde la interfaz web.
 - Perfil de publicación Windows x64 self-contained + single-file.
 - Script publicar-windows.bat.
 
-## Estado de verificación de captura
+## Estado de verificación de captura y despliegue
 
 En Debian ya se comprobó que:
 
-1. SharpPcap enumera enp2s0 y otras interfaces.
-2. La interfaz enp2s0 puede abrirse con permisos adecuados.
+1. SharpPcap enumera las interfaces.
+2. La interfaz Ethernet física puede abrirse con permisos adecuados.
 3. La captura Ethernet funciona.
 4. PacketDotNet puede interpretar paquetes Ethernet.
 5. Durante una prueba limitada de 5 segundos no apareció LLDP.
+
+En Windows además se comprobó que:
+
+1. Npcap está correctamente instalado.
+2. SharpPcap puede abrir el adaptador físico.
+3. `Ethernet 2` de .NET se relaciona correctamente con `\\Device\\NPF_{GUID}` mediante `NetworkInterface.Id`.
+4. La aplicación publicada self-contained + single-file puede ejecutarse sin instalar .NET previamente.
+5. El servidor local funciona mediante `http://127.0.0.1:5094`.
 
 La ausencia de LLDP no implica que el capturador esté roto.
 
@@ -261,16 +273,19 @@ No incorporar todavía:
 
 ## Próximo paso inmediato
 
-Primero probar la publicación Windows desde una PC Windows de desarrollo y verificar que:
+La publicación Windows y la captura con Npcap ya fueron verificadas.
 
-1. El ejecutable arranca sin instalar .NET.
-2. Se abre el navegador en http://127.0.0.1:5094.
-3. La aplicación sirve correctamente las vistas y recursos estáticos.
-4. Después se verifica la captura Ethernet con Npcap.
+La siguiente etapa es probar la detección pasiva con un dispositivo conectado directamente por UTP.
 
-Una vez comprobado el despliegue autónomo, continuar con una estrategia controlada de descubrimiento IP/MAC/Nombre.
+La captura actual trabaja durante unos segundos y recopila, cuando existen:
 
-No tomar el primer paquete ARP observado como identificación automática del dispositivo.
+- MAC remota desde Ethernet.
+- IPv4 desde ARP o IPv4.
+- Nombre desde LLDP System Name.
+
+No se debe tomar el primer paquete ARP de una red compartida como identificación automática del dispositivo.
+
+La estrategia actual no realiza escaneo completo de subred ni presupone una máscara.
 
 ## Forma de desarrollo
 
