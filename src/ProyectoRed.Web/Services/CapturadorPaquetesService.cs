@@ -15,8 +15,6 @@ public class CapturadorPaquetesService
         CaptureDeviceList dispositivos =
             CaptureDeviceList.Instance;
 
-        // Buscamos primero la interfaz de red de .NET que corresponde
-        // al nombre seleccionado en la aplicación.
         NetworkInterface interfazRed =
             NetworkInterface.GetAllNetworkInterfaces()
                 .FirstOrDefault(interfaz =>
@@ -60,9 +58,6 @@ public class CapturadorPaquetesService
         PhysicalAddress direccionMacLocal =
             interfazRed.GetPhysicalAddress();
 
-        // Cada dispositivo observado queda asociado a su MAC.
-        // IP y nombre solamente se agregan al mismo candidato que
-        // originó el paquete correspondiente.
         Dictionary<string, DispositivoDetectado> dispositivosObservados =
             new Dictionary<string, DispositivoDetectado>(
                 StringComparer.OrdinalIgnoreCase);
@@ -117,7 +112,13 @@ public class CapturadorPaquetesService
                     resultado);
             }
 
-            // ARP relaciona en la misma trama la MAC e IP del emisor.
+            // IMPORTANTE:
+            // Una trama IPv4 puede tener como MAC Ethernet al router,
+            // mientras que su IP de origen pertenece a un equipo remoto
+            // de Internet. Por eso NO asociamos IPv4 con la MAC Ethernet.
+            //
+            // ARP sí contiene la relación local IP <-> MAC del emisor,
+            // por lo que solamente ARP puede completar aquí la IPv4.
             ArpPacket arp =
                 ethernet.PayloadPacket as ArpPacket;
 
@@ -129,20 +130,8 @@ public class CapturadorPaquetesService
                     arp.SenderProtocolAddress.ToString();
             }
 
-            // IPv4 relaciona en la misma trama la MAC Ethernet e IP origen.
-            IPv4Packet ipv4 =
-                ethernet.PayloadPacket as IPv4Packet;
-
-            if (ipv4 != null &&
-                ipv4.SourceAddress != null &&
-                !ipv4.SourceAddress.Equals(IPAddress.Any))
-            {
-                resultado.DireccionIP =
-                    ipv4.SourceAddress.ToString();
-            }
-
-            // LLDP relaciona en la misma trama la MAC origen con
-            // el System Name del dispositivo que anuncia.
+            // LLDP mantiene la asociación entre el emisor Ethernet
+            // y el System Name del dispositivo que anuncia.
             LldpPacket lldp =
                 ethernet.PayloadPacket as LldpPacket;
 
@@ -196,8 +185,8 @@ public class CapturadorPaquetesService
             Console.WriteLine("Captura finalizada.");
         }
 
-        // Elegimos solamente candidatos cuya MAC e IP quedaron
-        // relacionadas por tráfico originado por ese mismo MAC.
+        // Para esta etapa solamente consideramos candidatos con una
+        // relación IP + MAC obtenida mediante ARP.
         DispositivoDetectado resultadoFinal =
             dispositivosObservados.Values
                 .FirstOrDefault(dispositivo =>
@@ -206,12 +195,14 @@ public class CapturadorPaquetesService
 
         if (resultadoFinal == null)
         {
+            // Si no hubo ARP, al menos conservamos la primera MAC remota
+            // observada, pero no inventamos una IP.
             resultadoFinal =
                 dispositivosObservados.Values.FirstOrDefault()
                 ?? new DispositivoDetectado();
 
             Console.WriteLine(
-                "No se obtuvo una pareja MAC + IP durante la captura.");
+                "No se obtuvo una relación IP + MAC mediante ARP durante la captura.");
         }
         else
         {
