@@ -4,6 +4,7 @@ using ProyectoRed.Web.Models;
 using SharpPcap;
 using System.Net;
 using System.Net.NetworkInformation;
+using System.Net.Sockets;
 
 namespace ProyectoRed.Web.Services;
 
@@ -55,12 +56,49 @@ public class CapturadorPaquetesService
                 $"No se encontró el dispositivo de captura asociado a '{nombreInterfaz}'.");
         }
 
+        IPInterfaceProperties propiedadesIp =
+            interfazRed.GetIPProperties();
+
+        IPAddress direccionIpLocal =
+            propiedadesIp.UnicastAddresses
+                .Where(direccion =>
+                    direccion.Address.AddressFamily ==
+                    AddressFamily.InterNetwork)
+                .Select(direccion => direccion.Address)
+                .FirstOrDefault();
+
+        IPAddress puertaEnlace =
+            propiedadesIp.GatewayAddresses
+                .Select(gateway => gateway.Address)
+                .FirstOrDefault(direccion =>
+                    direccion.AddressFamily ==
+                    AddressFamily.InterNetwork);
+
+        if (direccionIpLocal == null)
+        {
+            throw new InvalidOperationException(
+                $"La interfaz '{nombreInterfaz}' no tiene una dirección IPv4.");
+        }
+
+        if (puertaEnlace == null)
+        {
+            throw new InvalidOperationException(
+                $"La interfaz '{nombreInterfaz}' no tiene una puerta de enlace IPv4 configurada.");
+        }
+
         PhysicalAddress direccionMacLocal =
             interfazRed.GetPhysicalAddress();
 
-        Dictionary<string, DispositivoDetectado> dispositivosObservados =
-            new Dictionary<string, DispositivoDetectado>(
-                StringComparer.OrdinalIgnoreCase);
+        PhysicalAddress direccionMacBroadcast =
+            new PhysicalAddress(
+                new byte[] { 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF });
+
+        PhysicalAddress direccionMacVacia =
+            new PhysicalAddress(
+                new byte[] { 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 });
+
+        DispositivoDetectado resultado =
+            new DispositivoDetectado();
 
         void CuandoLlegaPaquete(
             object sender,
@@ -86,52 +124,37 @@ public class CapturadorPaquetesService
                 return;
             }
 
-            PhysicalAddress direccionMacOrigen =
-                ethernet.SourceHardwareAddress;
+            ArpPacket arp =
+                ethernet.PayloadPacket as ArpPacket;
 
-            // Ignoramos los paquetes generados por nuestra propia PC.
-            if (direccionMacOrigen.Equals(direccionMacLocal))
+            if (arp == null)
             {
                 return;
             }
 
-            string macRemota =
-                FormatearMac(direccionMacOrigen);
-
-            if (!dispositivosObservados.TryGetValue(
-                    macRemota,
-                    out DispositivoDetectado resultado))
+            // Aceptamos únicamente una respuesta ARP para la IP de la
+            // puerta de enlace que acabamos de consultar.
+            if (arp.Operation != ArpOperation.Response ||
+                !arp.SenderProtocolAddress.Equals(puertaEnlace))
             {
-                resultado = new DispositivoDetectado
-                {
-                    DireccionMac = macRemota
-                };
-
-                dispositivosObservados.Add(
-                    macRemota,
-                    resultado);
+                return;
             }
 
-            // IMPORTANTE:
-            // Una trama IPv4 puede tener como MAC Ethernet al router,
-            // mientras que su IP de origen pertenece a un equipo remoto
-            // de Internet. Por eso NO asociamos IPv4 con la MAC Ethernet.
-            //
-            // ARP sí contiene la relación local IP <-> MAC del emisor,
-            // por lo que solamente ARP puede completar aquí la IPv4.
-            ArpPacket arp =
-                ethernet.PayloadPacket as ArpPacket;
-
-            if (arp != null &&
-                arp.SenderProtocolAddress != null &&
-                !arp.SenderProtocolAddress.Equals(IPAddress.Any))
+            // La MAC Ethernet y la MAC declarada por ARP deben coincidir.
+            if (!ethernet.SourceHardwareAddress.Equals(
+                    arp.SenderHardwareAddress))
             {
-                resultado.DireccionIP =
-                    arp.SenderProtocolAddress.ToString();
+                return;
             }
 
-            // LLDP mantiene la asociación entre el emisor Ethernet
-            // y el System Name del dispositivo que anuncia.
+            resultado.DireccionIP =
+                arp.SenderProtocolAddress.ToString();
+
+            resultado.DireccionMac =
+                FormatearMac(arp.SenderHardwareAddress);
+
+            // Solo buscamos el nombre si el dispositivo también anuncia
+            // LLDP. Se resolverá más adelante sobre la misma MAC.
             LldpPacket lldp =
                 ethernet.PayloadPacket as LldpPacket;
 
@@ -167,11 +190,37 @@ public class CapturadorPaquetesService
 
         try
         {
+            // Primero comenzamos a escuchar y después enviamos una
+            // consulta ARP específica a la puerta de enlace.
             dispositivoSeleccionado.StartCapture();
 
-            // La captura dura solamente unos segundos.
-            // No dejamos el capturador ejecutándose indefinidamente.
-            await Task.Delay(TimeSpan.FromSeconds(5));
+            ArpPacket solicitudArp =
+                new ArpPacket(
+                    ArpOperation.Request,
+                    direccionMacVacia,
+                    puertaEnlace,
+                    direccionMacLocal,
+                    direccionIpLocal);
+
+            EthernetPacket tramaArp =
+                new EthernetPacket(
+                    direccionMacLocal,
+                    direccionMacBroadcast,
+                    EthernetType.Arp);
+
+            tramaArp.PayloadPacket =
+                solicitudArp;
+
+            dispositivoSeleccionado.SendPacket(
+                tramaArp.Bytes);
+
+            Console.WriteLine(
+                $"Consulta ARP enviada para: {puertaEnlace}");
+
+            // Esperamos solamente la respuesta correspondiente.
+            await EsperarResultadoAsync(
+                resultado,
+                TimeSpan.FromSeconds(3));
         }
         finally
         {
@@ -185,35 +234,35 @@ public class CapturadorPaquetesService
             Console.WriteLine("Captura finalizada.");
         }
 
-        // Para esta etapa solamente consideramos candidatos con una
-        // relación IP + MAC obtenida mediante ARP.
-        DispositivoDetectado resultadoFinal =
-            dispositivosObservados.Values
-                .FirstOrDefault(dispositivo =>
-                    !string.IsNullOrWhiteSpace(
-                        dispositivo.DireccionIP));
-
-        if (resultadoFinal == null)
+        if (string.IsNullOrWhiteSpace(resultado.DireccionMac))
         {
-            // Si no hubo ARP, al menos conservamos la primera MAC remota
-            // observada, pero no inventamos una IP.
-            resultadoFinal =
-                dispositivosObservados.Values.FirstOrDefault()
-                ?? new DispositivoDetectado();
-
             Console.WriteLine(
-                "No se obtuvo una relación IP + MAC mediante ARP durante la captura.");
+                $"No se recibió respuesta ARP para {puertaEnlace}.");
         }
         else
         {
             Console.WriteLine(
-                $"Dispositivo observado | " +
-                $"IP: {resultadoFinal.DireccionIP} | " +
-                $"MAC: {resultadoFinal.DireccionMac} | " +
-                $"Nombre: {resultadoFinal.Nombre}");
+                $"Dispositivo identificado | " +
+                $"IP: {resultado.DireccionIP} | " +
+                $"MAC: {resultado.DireccionMac} | " +
+                $"Nombre: {resultado.Nombre}");
         }
 
-        return resultadoFinal;
+        return resultado;
+    }
+
+    private async Task EsperarResultadoAsync(
+        DispositivoDetectado resultado,
+        TimeSpan tiempoMaximo)
+    {
+        DateTime limite =
+            DateTime.UtcNow.Add(tiempoMaximo);
+
+        while (string.IsNullOrWhiteSpace(resultado.DireccionMac) &&
+               DateTime.UtcNow < limite)
+        {
+            await Task.Delay(50);
+        }
     }
 
     private string FormatearMac(PhysicalAddress direccionMac)
