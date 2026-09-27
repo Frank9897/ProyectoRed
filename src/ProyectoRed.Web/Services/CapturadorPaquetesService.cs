@@ -111,8 +111,7 @@ public class CapturadorPaquetesService
             if (arp != null &&
                 string.IsNullOrWhiteSpace(resultado.DireccionIP) &&
                 arp.SenderProtocolAddress != null &&
-                !IPAddress.IsAny(
-                    arp.SenderProtocolAddress))
+                !arp.SenderProtocolAddress.Equals(IPAddress.Any))
             {
                 resultado.DireccionIP =
                     arp.SenderProtocolAddress.ToString();
@@ -125,7 +124,7 @@ public class CapturadorPaquetesService
             if (ipv4 != null &&
                 string.IsNullOrWhiteSpace(resultado.DireccionIP) &&
                 ipv4.SourceAddress != null &&
-                !IPAddress.IsAny(ipv4.SourceAddress))
+                !ipv4.SourceAddress.Equals(IPAddress.Any))
             {
                 resultado.DireccionIP =
                     ipv4.SourceAddress.ToString();
