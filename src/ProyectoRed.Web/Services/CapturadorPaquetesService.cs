@@ -114,7 +114,7 @@ public class CapturadorPaquetesService
 
         string nombreEquipo = string.Empty;
 
-        foreach (var tlv in lldp)
+        foreach (Tlv tlv in lldp.TlvCollection)
         {
             if (tlv.Type == TlvType.SystemName)
             {
