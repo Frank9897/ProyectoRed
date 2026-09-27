@@ -259,11 +259,80 @@ V6  Descubrimiento de topología
 V7  Mapa visual de red
 ~~~
 
+## Instalador Windows
+
+La publicación autónoma y el instalador están separados.
+
+El script:
+
+~~~text
+publicar-windows.bat
+~~~
+
+genera la publicación en:
+
+~~~text
+dist/windows-x64/
+~~~
+
+El instalador de Inno Setup se encuentra en:
+
+~~~text
+installer/ProyectoRed.iss
+~~~
+
+y se puede compilar mediante:
+
+~~~text
+installer/crear-instalador-windows.bat
+~~~
+
+El instalador incluye la publicación self-contained de ProyectoRed y crea accesos directos en el menú Inicio y en el escritorio.
+
+### Npcap y el instalador
+
+Npcap sigue siendo una dependencia de sistema para la captura Ethernet en Windows.
+
+El instalador no incluye una copia de Npcap en el repositorio. Para empaquetar e instalar Npcap junto con ProyectoRed se debe utilizar una distribución Npcap OEM con los derechos de redistribución correspondientes.
+
+El instalador deja preparado el punto de integración para Npcap OEM. Cuando exista una copia legítimamente redistribuible del instalador OEM, puede incorporarse localmente en:
+
+~~~text
+installer/dependencies/npcap-oem.exe
+~~~
+
+sin subir ese archivo al repositorio, y habilitar la línea correspondiente en installer/ProyectoRed.iss.
+
+Mientras Npcap no esté instalado, el instalador avisa al finalizar la instalación. La aplicación también informa del problema cuando intenta realizar una captura.
+
+### Objetivo de instalación
+
+El flujo de campo queda así:
+
+~~~text
+Instalador ProyectoRed
+        |
+        +--> instala ProyectoRed.Web.exe
+        |
+        +--> .NET ya viene incluido
+        |
+        +--> verifica si Npcap está instalado
+        |
+        +--> crea accesos directos
+        |
+        v
+ProyectoRed.Web.exe
+        |
+        +--> localhost:5094
+        +--> navegador
+        +--> captura Ethernet mediante Npcap
+~~~
+
+La instalación de ProyectoRed requiere permisos de administrador porque se instala en Program Files. La ejecución posterior no requiere instalar .NET por separado.
+
 ## Próximo paso
 
-La publicación autónoma de Windows ya fue probada correctamente y la captura con Npcap también fue validada.
-
-El siguiente trabajo es comprobar el descubrimiento pasivo en un escenario real con un dispositivo conectado directamente por UTP y, a partir de los resultados, mejorar la forma de presentar IP/MAC/Nombre sin convertir ProyectoRed en un scanner de subred.
+Con la parte de despliegue preparada, el siguiente trabajo sigue siendo comprobar el descubrimiento con un dispositivo conectado directamente por UTP y, a partir de los resultados, mejorar la forma de presentar IP/MAC/Nombre sin convertir ProyectoRed en un scanner de subred.
 
 ## Forma de desarrollo
 
