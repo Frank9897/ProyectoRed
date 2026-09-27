@@ -1,11 +1,7 @@
-﻿@model List<InterfazRed>
+@model List<InterfazRed>
 @{
     ViewData["Title"] = "ProyectoRed";
 }
-
-
-
-
 
 <div class="text-center">
 
@@ -35,7 +31,7 @@
                     </label>
 
                     <select id="interfazRed" class="form-select">
-                        
+
                         <option value="">
                             Seleccione una interfaz...
                         </option>
@@ -53,7 +49,10 @@
 
                 <div class="d-grid">
 
-                    <button type="button" class="btn btn-primary">
+                    <button
+                        id="btnComenzar"
+                        type="button"
+                        class="btn btn-primary">
                         Comenzar
                     </button>
 
@@ -61,9 +60,37 @@
 
                 <div class="mt-4">
 
-                    <p class="mb-0">
-                        <strong>Estado:</strong> Esperando
+                    <p class="mb-3">
+                        <strong>Estado:</strong>
+                        <span id="estadoDeteccion">Esperando</span>
                     </p>
+
+                    <div id="resultadoDeteccion" class="card d-none">
+
+                        <div class="card-body">
+
+                            <h3 class="h5 mb-3">
+                                Dispositivo detectado
+                            </h3>
+
+                            <p class="mb-2">
+                                <strong>IP:</strong>
+                                <span id="resultadoIp">No disponible</span>
+                            </p>
+
+                            <p class="mb-2">
+                                <strong>MAC:</strong>
+                                <span id="resultadoMac">No disponible</span>
+                            </p>
+
+                            <p class="mb-0">
+                                <strong>Nombre:</strong>
+                                <span id="resultadoNombre">No disponible</span>
+                            </p>
+
+                        </div>
+
+                    </div>
 
                 </div>
 
