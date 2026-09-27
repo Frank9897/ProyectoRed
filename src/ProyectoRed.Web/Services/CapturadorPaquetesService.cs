@@ -1,6 +1,7 @@
 using PacketDotNet;
 using PacketDotNet.Lldp;
 using SharpPcap;
+using System.Net.NetworkInformation;
 
 namespace ProyectoRed.Web.Services;
 
@@ -15,33 +16,35 @@ public class CapturadorPaquetesService
         CaptureDeviceList dispositivos =
             CaptureDeviceList.Instance;
 
-        ICaptureDevice dispositivoSeleccionado = null;
+        // Buscamos primero la interfaz de red de .NET que corresponde
+        // al nombre que seleccionó el usuario en la aplicación.
+        NetworkInterface interfazRed =
+            NetworkInterface.GetAllNetworkInterfaces()
+                .FirstOrDefault(interfaz =>
+                    string.Equals(
+                        interfaz.Name,
+                        nombreInterfaz,
+                        StringComparison.OrdinalIgnoreCase));
 
-        // Mostramos temporalmente los dispositivos que SharpPcap detecta.
-        // Esto permite comprobar cómo identifica Windows cada adaptador.
-        Console.WriteLine("Dispositivos de captura detectados por SharpPcap:");
-
-        foreach (var dispositivo in dispositivos)
+        if (interfazRed == null)
         {
-            Console.WriteLine(
-                $"  Name: {dispositivo.Name} | Description: {dispositivo.Description}");
+            throw new InvalidOperationException(
+                $"No se encontró la interfaz de red '{nombreInterfaz}'.");
         }
 
+        ICaptureDevice dispositivoSeleccionado = null;
+
         foreach (var dispositivo in dispositivos)
         {
-            // En Linux, SharpPcap normalmente usa el mismo nombre de
-            // interfaz que NetworkInterface (por ejemplo, enp2s0).
-            // En Windows, el nombre amigable puede ser "Ethernet 2",
-            // mientras que SharpPcap utiliza internamente un nombre
-            // de captura diferente. La descripción suele conservar
-            // el nombre amigable mostrado por Windows.
+            // En Windows, SharpPcap identifica el adaptador mediante:
+            // \Device\NPF_{GUID}
+            // El GUID coincide con NetworkInterface.Id de .NET.
             if (string.Equals(
                     dispositivo.Name,
                     nombreInterfaz,
                     StringComparison.OrdinalIgnoreCase) ||
-                string.Equals(
-                    dispositivo.Description,
-                    nombreInterfaz,
+                dispositivo.Name.Contains(
+                    interfazRed.Id,
                     StringComparison.OrdinalIgnoreCase))
             {
                 dispositivoSeleccionado = dispositivo;
@@ -52,7 +55,7 @@ public class CapturadorPaquetesService
         if (dispositivoSeleccionado == null)
         {
             throw new InvalidOperationException(
-                $"No se encontró el dispositivo de captura '{nombreInterfaz}'.");
+                $"No se encontró el dispositivo de captura asociado a '{nombreInterfaz}'.");
         }
 
         dispositivoSeleccionado.OnPacketArrival +=
