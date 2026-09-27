@@ -100,6 +100,10 @@ public class CapturadorPaquetesService
         DispositivoDetectado resultado =
             new DispositivoDetectado();
 
+        Dictionary<string, string> nombresLldpPorMac =
+            new Dictionary<string, string>(
+                StringComparer.OrdinalIgnoreCase);
+
         void CuandoLlegaPaquete(
             object sender,
             PacketCapture captura)
@@ -121,6 +125,45 @@ public class CapturadorPaquetesService
 
             if (ethernet == null)
             {
+                return;
+            }
+
+            // LLDP puede aparecer antes o después de la respuesta ARP.
+            // Guardamos el nombre asociado a su MAC para poder unirlo
+            // posteriormente con el mismo dispositivo.
+            LldpPacket lldp =
+                ethernet.PayloadPacket as LldpPacket;
+
+            if (lldp != null)
+            {
+                string macLldp =
+                    FormatearMac(ethernet.SourceHardwareAddress);
+
+                foreach (Tlv tlv in lldp.TlvCollection)
+                {
+                    if (tlv.Type != TlvType.SystemName)
+                    {
+                        continue;
+                    }
+
+                    SystemNameTlv systemName =
+                        (SystemNameTlv)tlv;
+
+                    nombresLldpPorMac[macLldp] =
+                        systemName.Name;
+
+                    if (string.Equals(
+                            macLldp,
+                            resultado.DireccionMac,
+                            StringComparison.OrdinalIgnoreCase))
+                    {
+                        resultado.Nombre =
+                            systemName.Name;
+                    }
+
+                    break;
+                }
+
                 return;
             }
 
@@ -153,30 +196,15 @@ public class CapturadorPaquetesService
             resultado.DireccionMac =
                 FormatearMac(arp.SenderHardwareAddress);
 
-            // Solo buscamos el nombre si el dispositivo también anuncia
-            // LLDP. Se resolverá más adelante sobre la misma MAC.
-            LldpPacket lldp =
-                ethernet.PayloadPacket as LldpPacket;
+            string macResultado =
+                resultado.DireccionMac;
 
-            if (lldp == null)
+            if (nombresLldpPorMac.TryGetValue(
+                    macResultado,
+                    out string nombreLldp))
             {
-                return;
-            }
-
-            foreach (Tlv tlv in lldp.TlvCollection)
-            {
-                if (tlv.Type != TlvType.SystemName)
-                {
-                    continue;
-                }
-
-                SystemNameTlv systemName =
-                    (SystemNameTlv)tlv;
-
                 resultado.Nombre =
-                    systemName.Name;
-
-                break;
+                    nombreLldp;
             }
         }
 
