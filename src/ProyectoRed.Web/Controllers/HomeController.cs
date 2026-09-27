@@ -26,17 +26,45 @@ public class HomeController : Controller
         return View(interfacesList);
     }
 
-    public async Task<IActionResult> PruebaCaptura(string nombreInterfaz)
+    public async Task<IActionResult> Descubrir(string nombreInterfaz)
     {
         if (string.IsNullOrWhiteSpace(nombreInterfaz))
         {
-            return BadRequest("Debe indicar una interfaz de red.");
+            return BadRequest(new
+            {
+                mensaje = "Debe seleccionar una interfaz de red."
+            });
         }
 
-        await _capturadorPaquetesService.CapturarAsync(
-            nombreInterfaz);
+        try
+        {
+            DispositivoDetectado resultado =
+                await _capturadorPaquetesService.CapturarAsync(
+                    nombreInterfaz);
 
-        return Content("Prueba de captura ejecutada.");
+            return Json(resultado);
+        }
+        catch (DllNotFoundException)
+        {
+            return StatusCode(503, new
+            {
+                mensaje =
+                    "No se encontró Npcap. Instale Npcap para habilitar la captura Ethernet."
+            });
+        }
+        catch (InvalidOperationException excepcion)
+        {
+            return BadRequest(new
+            {
+                mensaje = excepcion.Message
+            });
+        }
+    }
+
+    // Se conserva esta ruta para las pruebas directas que veníamos utilizando.
+    public async Task<IActionResult> PruebaCaptura(string nombreInterfaz)
+    {
+        return await Descubrir(nombreInterfaz);
     }
 
     public IActionResult Privacy()
