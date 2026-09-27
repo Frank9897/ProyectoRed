@@ -1,23 +1,22 @@
 using PacketDotNet;
 using PacketDotNet.Lldp;
+using ProyectoRed.Web.Models;
 using SharpPcap;
+using System.Net;
 using System.Net.NetworkInformation;
 
 namespace ProyectoRed.Web.Services;
 
 public class CapturadorPaquetesService
 {
-    private bool lldpMostrado;
-
-    public async Task CapturarAsync(string nombreInterfaz)
+    public async Task<DispositivoDetectado> CapturarAsync(
+        string nombreInterfaz)
     {
-        lldpMostrado = false;
-
         CaptureDeviceList dispositivos =
             CaptureDeviceList.Instance;
 
         // Buscamos primero la interfaz de red de .NET que corresponde
-        // al nombre que seleccionó el usuario en la aplicación.
+        // al nombre seleccionado en la aplicación.
         NetworkInterface interfazRed =
             NetworkInterface.GetAllNetworkInterfaces()
                 .FirstOrDefault(interfaz =>
@@ -36,9 +35,9 @@ public class CapturadorPaquetesService
 
         foreach (var dispositivo in dispositivos)
         {
-            // En Windows, SharpPcap identifica el adaptador mediante:
+            // En Windows, SharpPcap utiliza el formato:
             // \Device\NPF_{GUID}
-            // El GUID coincide con NetworkInterface.Id de .NET.
+            // Ese GUID corresponde al NetworkInterface.Id de .NET.
             if (string.Equals(
                     dispositivo.Name,
                     nombreInterfaz,
@@ -58,6 +57,106 @@ public class CapturadorPaquetesService
                 $"No se encontró el dispositivo de captura asociado a '{nombreInterfaz}'.");
         }
 
+        DispositivoDetectado resultado =
+            new DispositivoDetectado();
+
+        PhysicalAddress direccionMacLocal =
+            interfazRed.GetPhysicalAddress();
+
+        void CuandoLlegaPaquete(
+            object sender,
+            PacketCapture captura)
+        {
+            var capturaBruta = captura.GetPacket();
+
+            if (capturaBruta.LinkLayerType != LinkLayers.Ethernet)
+            {
+                return;
+            }
+
+            Packet paquete =
+                Packet.ParsePacket(
+                    capturaBruta.LinkLayerType,
+                    capturaBruta.Data);
+
+            EthernetPacket ethernet =
+                paquete as EthernetPacket;
+
+            if (ethernet == null)
+            {
+                return;
+            }
+
+            PhysicalAddress direccionMacOrigen =
+                ethernet.SourceHardwareAddress;
+
+            // Ignoramos los paquetes generados por nuestra propia PC.
+            if (direccionMacOrigen.Equals(direccionMacLocal))
+            {
+                return;
+            }
+
+            // En una conexión directa, el primer MAC remoto que vemos
+            // corresponde al dispositivo conectado al otro extremo.
+            if (string.IsNullOrWhiteSpace(resultado.DireccionMac))
+            {
+                resultado.DireccionMac =
+                    FormatearMac(direccionMacOrigen);
+            }
+
+            // ARP proporciona directamente MAC + IPv4 del emisor.
+            ArpPacket arp =
+                ethernet.PayloadPacket as ArpPacket;
+
+            if (arp != null &&
+                string.IsNullOrWhiteSpace(resultado.DireccionIP) &&
+                arp.SenderProtocolAddress != null &&
+                !IPAddress.IsAny(
+                    arp.SenderProtocolAddress))
+            {
+                resultado.DireccionIP =
+                    arp.SenderProtocolAddress.ToString();
+            }
+
+            // IPv4 permite obtener la dirección IP del origen.
+            IPv4Packet ipv4 =
+                ethernet.PayloadPacket as IPv4Packet;
+
+            if (ipv4 != null &&
+                string.IsNullOrWhiteSpace(resultado.DireccionIP) &&
+                ipv4.SourceAddress != null &&
+                !IPAddress.IsAny(ipv4.SourceAddress))
+            {
+                resultado.DireccionIP =
+                    ipv4.SourceAddress.ToString();
+            }
+
+            // LLDP puede proporcionar el nombre del equipo.
+            LldpPacket lldp =
+                ethernet.PayloadPacket as LldpPacket;
+
+            if (lldp == null)
+            {
+                return;
+            }
+
+            foreach (Tlv tlv in lldp.TlvCollection)
+            {
+                if (tlv.Type != TlvType.SystemName)
+                {
+                    continue;
+                }
+
+                SystemNameTlv systemName =
+                    (SystemNameTlv)tlv;
+
+                resultado.Nombre =
+                    systemName.Name;
+
+                break;
+            }
+        }
+
         dispositivoSeleccionado.OnPacketArrival +=
             CuandoLlegaPaquete;
 
@@ -70,8 +169,8 @@ public class CapturadorPaquetesService
         {
             dispositivoSeleccionado.StartCapture();
 
-            // La captura dura solamente unos segundos.
-            // No dejamos el capturador ejecutándose indefinidamente.
+            // Escuchamos durante unos segundos para permitir que el
+            // dispositivo remoto genere tráfico.
             await Task.Delay(TimeSpan.FromSeconds(5));
         }
         finally
@@ -83,82 +182,30 @@ public class CapturadorPaquetesService
 
             dispositivoSeleccionado.Close();
 
-            if (!lldpMostrado)
-            {
-                Console.WriteLine(
-                    "No se encontró ningún paquete LLDP durante la prueba.");
-            }
-
             Console.WriteLine("Captura finalizada.");
         }
+
+        if (string.IsNullOrWhiteSpace(resultado.DireccionMac))
+        {
+            Console.WriteLine(
+                "No se detectó tráfico de un dispositivo remoto durante la prueba.");
+        }
+        else
+        {
+            Console.WriteLine(
+                $"Dispositivo | " +
+                $"IP: {resultado.DireccionIP} | " +
+                $"MAC: {resultado.DireccionMac} | " +
+                $"Nombre: {resultado.Nombre}");
+        }
+
+        return resultado;
     }
 
-    private void CuandoLlegaPaquete(
-        object sender,
-        PacketCapture captura)
+    private string FormatearMac(PhysicalAddress direccionMac)
     {
-        // Solo necesitamos un paquete LLDP para esta prueba.
-        // Ignoramos los siguientes para no generar una salida interminable.
-        if (lldpMostrado)
-        {
-            return;
-        }
-
-        var capturaBruta = captura.GetPacket();
-
-        if (capturaBruta.LinkLayerType != LinkLayers.Ethernet)
-        {
-            return;
-        }
-
-        Packet paquete =
-            Packet.ParsePacket(
-                capturaBruta.LinkLayerType,
-                capturaBruta.Data);
-
-        EthernetPacket ethernet =
-            paquete as EthernetPacket;
-
-        if (ethernet == null)
-        {
-            return;
-        }
-
-        // LLDP utiliza el EtherType 0x88CC.
-        if (ethernet.Type != EthernetType.Lldp)
-        {
-            return;
-        }
-
-        LldpPacket lldp =
-            ethernet.PayloadPacket as LldpPacket;
-
-        if (lldp == null)
-        {
-            return;
-        }
-
-        string nombreEquipo = string.Empty;
-
-        foreach (Tlv tlv in lldp.TlvCollection)
-        {
-            if (tlv.Type == TlvType.SystemName)
-            {
-                SystemNameTlv systemName =
-                    (SystemNameTlv)tlv;
-
-                nombreEquipo =
-                    systemName.Name;
-
-                break;
-            }
-        }
-
-        Console.WriteLine(
-            $"LLDP | " +
-            $"MAC: {ethernet.SourceHardwareAddress} | " +
-            $"Nombre: {nombreEquipo}");
-
-        lldpMostrado = true;
+        return BitConverter
+            .ToString(direccionMac.GetAddressBytes())
+            .Replace("-", ":");
     }
 }
