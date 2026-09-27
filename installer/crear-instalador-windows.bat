@@ -22,27 +22,55 @@ if not exist "%PUBLICACION%\ProyectoRed.Web.exe" (
     exit /b 1
 )
 
-where ISCC.exe >nul 2>&1
-if not errorlevel 1 (
-    set "ISCC=ISCC.exe"
+rem Permitir indicar manualmente la ubicacion si Inno no esta en PATH.
+if defined ISCC_PATH if exist "%ISCC_PATH%" set "ISCC=%ISCC_PATH%"
+
+rem Buscar ISCC en PATH.
+if not defined ISCC (
+    for /f "delims=" %%I in ('where ISCC.exe 2^>nul') do (
+        if not defined ISCC set "ISCC=%%I"
+    )
 )
 
-if not defined ISCC if exist "%ProgramFiles(x86)%\Inno Setup 6\ISCC.exe" (
-    set "ISCC=%ProgramFiles(x86)%\Inno Setup 6\ISCC.exe"
-)
+rem Rutas habituales de instalacion de Inno Setup 6.
+if not defined ISCC if exist "%ProgramFiles(x86)%\Inno Setup 6\ISCC.exe" set "ISCC=%ProgramFiles(x86)%\Inno Setup 6\ISCC.exe"
+if not defined ISCC if exist "%ProgramFiles%\Inno Setup 6\ISCC.exe" set "ISCC=%ProgramFiles%\Inno Setup 6\ISCC.exe"
+if not defined ISCC if exist "%LocalAppData%\Programs\Inno Setup 6\ISCC.exe" set "ISCC=%LocalAppData%\Programs\Inno Setup 6\ISCC.exe"
 
-if not defined ISCC if exist "%ProgramFiles%\Inno Setup 6\ISCC.exe" (
-    set "ISCC=%ProgramFiles%\Inno Setup 6\ISCC.exe"
+rem Ultimo intento: buscar ISCC.exe dentro de las carpetas de programas.
+if not defined ISCC (
+    if exist "%ProgramFiles(x86)%" (
+        for /f "delims=" %%I in ('where /r "%ProgramFiles(x86)%" ISCC.exe 2^>nul') do (
+            if not defined ISCC set "ISCC=%%I"
+        )
+    )
 )
 
 if not defined ISCC (
-    echo ERROR: No se encontro Inno Setup 6.
-    echo Instale Inno Setup en la PC de desarrollo y vuelva a intentarlo.
+    if exist "%ProgramFiles%" (
+        for /f "delims=" %%I in ('where /r "%ProgramFiles%" ISCC.exe 2^>nul') do (
+            if not defined ISCC set "ISCC=%%I"
+        )
+    )
+)
+
+if not defined ISCC (
+    echo ERROR: No se encontro ISCC.exe de Inno Setup 6.
+    echo.
+    echo Compruebe que exista uno de estos archivos:
+    echo   %ProgramFiles(x86)%\Inno Setup 6\ISCC.exe
+    echo   %ProgramFiles%\Inno Setup 6\ISCC.exe
+    echo.
+    echo Tambien puede indicar la ruta manualmente con:
+    echo   set ISCC_PATH=C:\ruta\a\ISCC.exe
     echo.
     pause
     exit /b 1
 )
 
+echo Compilador encontrado:
+echo %ISCC%
+echo.
 echo Compilando instalador...
 "%ISCC%" "%SCRIPT%"
 
