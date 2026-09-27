@@ -52,7 +52,7 @@ El nombre puede no estar disponible y la aplicación debe poder indicar esa situ
 
 No forman parte de esta primera versión el escaneo completo de redes, descubrimiento masivo de subredes, detección de puertos, identificación del sistema operativo, SNMP, historial, topología ni mapas de red.
 
-## Arquitectura prevista
+## Arquitectura actual
 
 ~~~text
 Navegador
@@ -62,16 +62,16 @@ Navegador
 ASP.NET Core MVC
     |
     v
-Lógica de detección
+HomeController
     |
     v
-Interfaz Ethernet física
+InterfazRedService
     |
     v
-Captura / análisis
+NetworkInterface
     |
-    +--> ARP
-    +--> LLDP
+    +--> detección de interfaz física según sistema operativo
+    +--> ARP / LLDP (etapa posterior)
     |
     v
 IP + MAC + Nombre
@@ -93,13 +93,28 @@ La interfaz web y la lógica de descubrimiento deben mantenerse separadas para p
 
 ### Detección prevista
 
-- System.Net.NetworkInformation.
+- `System.Net.NetworkInformation`.
+- `System.Management` para la consulta de adaptadores en Windows.
 - Captura de paquetes Ethernet.
 - Npcap en Windows.
 - SharpPcap.
 - PacketDotNet.
 - ARP.
 - LLDP.
+
+### Identificación de interfaz física
+
+El servicio actual no depende de nombres como `enp2s0` o `Ethernet` para decidir si una interfaz es física.
+
+En Linux se utiliza la relación de la interfaz con el dispositivo de hardware mediante `/sys/class/net/<interfaz>/device`.
+
+En Windows se consulta `MSFT_NetAdapter` y se filtran adaptadores con:
+
+- `ConnectorPresent = TRUE`.
+- `HardwareInterface = TRUE`.
+- `Virtual = FALSE`.
+
+La implementación ya está presente en `InterfazRedService`.
 
 Npcap y las bibliotecas de captura todavía no forman parte de la implementación actual. La preparación/instalación de Npcap deberá automatizarse posteriormente.
 
@@ -118,6 +133,7 @@ ProyectoRed/
     +-- ProyectoRed.Web/
         |-- Controllers/
         |-- Models/
+        |-- Services/
         |-- Views/
         |-- wwwroot/
         |-- Program.cs
@@ -126,40 +142,37 @@ ProyectoRed/
 
 ## Estado actual
 
-Ya se encuentran implementados y probados:
+Ya se encuentran implementados:
 
 - Solución ProyectoRed.slnx.
 - Proyecto ASP.NET Core MVC.
 - Configuración en .NET 10.
 - Ejecución local mediante localhost.
 - Página inicial personalizada.
-- Selector inicial de interfaz de red.
-- Lectura de interfaces mediante NetworkInterface.GetAllNetworkInterfaces().
+- Modelo `InterfazRed` con nombre, IPv4, MAC y tipo.
+- Servicio `InterfazRedService`.
+- Lectura de interfaces mediante `NetworkInterface.GetAllNetworkInterfaces()`.
 - Obtención del nombre de interfaz.
-- Obtención de la descripción.
-- Obtención del estado.
-- Obtención de NetworkInterfaceType.
 - Obtención y formateo de la dirección MAC.
 - Obtención de direcciones IPv4.
-- Paso de una colección desde el controlador a una vista Razor.
-- Recorrido de la colección en CSHTML mediante @foreach.
+- Obtención de `NetworkInterfaceType`.
+- Filtro por `OperationalStatus.Up`.
+- Filtro por `NetworkInterfaceType.Ethernet`.
+- Detección adicional de interfaz física para Linux y Windows.
+- Registro de `InterfazRedService` mediante inyección de dependencias.
+- Paso de una colección `List<InterfazRed>` desde el controlador a una vista Razor.
+- Vista `Index.cshtml` adaptada al modelo `InterfazRed`.
+- Selector inicial de interfaz que muestra el nombre de la interfaz.
+- Referencia al paquete `System.Management` versión `10.0.12`.
 
-## Problema técnico actual
+### Verificación pendiente
 
-Las pruebas en Debian mostraron que NetworkInterfaceType.Ethernet por sí solo no distingue siempre una interfaz Ethernet física de interfaces virtuales de Docker u otros componentes.
+La implementación de detección física ya está escrita, pero debe verificarse con pruebas reales en:
 
-Se observaron interfaces como:
+- Debian, para comprobar qué interfaces físicas quedan y que se excluyan virtuales como Docker, bridges, veth y Tailscale.
+- Windows, para comprobar el comportamiento con adaptadores Ethernet físicos y virtuales.
 
-~~~text
-lo
-enp2s0
-tailscale0
-docker0
-br-...
-veth...
-~~~
-
-Por lo tanto, todavía debemos resolver de forma portable cómo identificar la interfaz Ethernet física que debe utilizar ProyectoRed.
+No se debe añadir una propiedad de “confianza física” al modelo. La decisión se realiza internamente en el servicio.
 
 ## Evolución futura
 
@@ -184,6 +197,14 @@ V6  Descubrimiento de topología
  v
 V7  Mapa visual de red
 ~~~
+
+## Próximo paso
+
+Verificar en Debian el resultado real de la detección de interfaces físicas.
+
+Después realizar la prueba equivalente en Windows.
+
+Cuando la selección de la interfaz física esté confirmada, avanzar a la etapa de descubrimiento mediante captura Ethernet. No implementar todavía Npcap, SharpPcap ni PacketDotNet.
 
 ## Forma de desarrollo
 
