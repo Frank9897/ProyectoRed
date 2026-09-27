@@ -6,7 +6,7 @@ Quiero continuar una tutoría práctica de C# y redes sobre un proyecto llamado 
 
 ProyectoRed es una aplicación web local que debe ejecutarse mediante localhost en la misma PC o laptop que el técnico utiliza en el lugar donde se encuentra el dispositivo.
 
-El escenario principal es:
+Escenario principal:
 
 PC o laptop de soporte
 |
@@ -16,7 +16,7 @@ Dispositivo cuya IP se desconoce
 
 El dispositivo puede ser, por ejemplo, un switch administrable, una impresora IP, un plotter, una PC, una cámara u otro dispositivo de red.
 
-La primera versión debe ser muy sencilla. Su objetivo es identificar, cuando sea posible:
+La primera versión debe ser sencilla. Su objetivo es identificar, cuando sea posible:
 
 - IP.
 - MAC.
@@ -40,28 +40,87 @@ La aplicación terminada debe poder publicarse como self-contained para Windows,
 
 La interfaz será una web local porque el navegador funciona como interfaz gráfica, pero la lógica C# y el acceso a la interfaz Ethernet se ejecutarán en la misma computadora que está físicamente conectada al dispositivo.
 
-## Captura Ethernet
+## Detección de interfaz Ethernet
 
-La detección debe realizarse sobre la interfaz Ethernet física utilizada para la conexión UTP.
+La aplicación debe trabajar con la interfaz Ethernet física utilizada para la conexión UTP.
 
-No se debe convertir el proyecto en un scanner de Wi-Fi, Tailscale, Docker, loopback ni otras interfaces virtuales.
+No se debe seleccionar una interfaz física mediante nombres concretos como `enp2s0`, `Ethernet` o similares, porque esos nombres pueden cambiar entre sistemas y equipos.
 
-En Windows se prevé utilizar Npcap y automatizar su preparación o instalación cuando lleguemos a esa etapa.
+Tampoco se debe convertir el proyecto en un scanner de Wi-Fi, Tailscale, Docker, loopback ni otras interfaces virtuales.
 
-Para la captura y análisis de paquetes se prevé estudiar SharpPcap y PacketDotNet.
+### Enfoque implementado
 
-ARP y LLDP son mecanismos especialmente relevantes para las etapas iniciales de descubrimiento.
+`System.Net.NetworkInformation` se utiliza para enumerar las interfaces disponibles.
 
-No implementar Npcap, SharpPcap ni PacketDotNet antes de que corresponda en el avance.
+El servicio `InterfazRedService` mantiene los filtros generales:
 
-## Entorno de desarrollo actual
+- `OperationalStatus.Up`
+- `NetworkInterfaceType.Ethernet`
 
-- Debian 13.
+Además, incorpora una comprobación específica por sistema operativo para descartar interfaces virtuales.
+
+### Linux
+
+En Linux se comprueba la ruta:
+
+`/sys/class/net/<nombre>/device`
+
+y se utiliza el vínculo hacia el dispositivo para distinguir una interfaz asociada a hardware de interfaces virtuales.
+
+No se depende de prefijos como `enp`, `eth` o nombres similares.
+
+### Windows
+
+En Windows se consulta `MSFT_NetAdapter` mediante `System.Management`, utilizando:
+
+- `ConnectorPresent = TRUE`
+- `HardwareInterface = TRUE`
+- `Virtual = FALSE`
+
+Se obtiene `InterfaceGuid` y se relaciona con `NetworkInterface.Id` de .NET.
+
+El paquete actual del proyecto es:
+
+`System.Management` versión `10.0.12`.
+
+## Arquitectura actual
+
+Navegador
+    |
+    | localhost
+    v
+ASP.NET Core MVC
+    |
+    v
+HomeController
+    |
+    v
+InterfazRedService
+    |
+    v
+NetworkInterface
+    |
+    +--> detección de interfaz física según SO
+    +--> IPv4
+    +--> MAC
+    +--> tipo
+    |
+    v
+List<InterfazRed>
+    |
+    v
+Vista Razor
+
+La interfaz web y la lógica de descubrimiento deben mantenerse separadas para poder ampliar el proyecto posteriormente.
+
+## Entorno actual
+
+- Debian 13 para desarrollo y pruebas.
 - .NET 10.
 - ASP.NET Core MVC.
 - Visual Studio Code mediante SSH.
 - Git y GitHub.
-- Docker disponible en el servidor.
+- Docker disponible en el laboratorio.
 - Tailscale disponible en el laboratorio.
 
 Repositorio:
@@ -76,11 +135,13 @@ ProyectoRed/
 |-- README.md
 |-- .gitignore
 |-- docs/
+|   +-- PROMPT_CONTINUIDAD.md
 |-- pruebas/
 +-- src/
     +-- ProyectoRed.Web/
         |-- Controllers/
         |-- Models/
+        |-- Services/
         |-- Views/
         |-- wwwroot/
         |-- Program.cs
@@ -88,33 +149,143 @@ ProyectoRed/
 
 ## Estado actual
 
-Ya existe un proyecto ASP.NET Core MVC en .NET 10 y se comprobó su ejecución mediante localhost.
+Ya se encuentran implementados:
 
-Se creó el modelo Models/InterfazRed.cs con estas propiedades:
+- Solución `ProyectoRed.slnx`.
+- Proyecto ASP.NET Core MVC.
+- Configuración en .NET 10.
+- Ejecución local mediante localhost.
+- Página inicial personalizada.
+- Modelo `Models/InterfazRed.cs`.
+- Servicio `Services/InterfazRedService.cs`.
+- Registro del servicio mediante inyección de dependencias.
+- Inyección de `InterfazRedService` en `HomeController`.
+- Lectura de interfaces mediante `NetworkInterface.GetAllNetworkInterfaces()`.
+- Filtro por estado operativo `Up`.
+- Filtro por tipo `Ethernet`.
+- Detección adicional de interfaz física para Linux y Windows.
+- Obtención del nombre de interfaz.
+- Obtención y formateo de la dirección MAC.
+- Obtención de direcciones IPv4.
+- Obtención de `NetworkInterfaceType`.
+- Creación de objetos `InterfazRed`.
+- Paso de `List<InterfazRed>` desde el controlador a la vista.
+- Vista Razor con `@model List<InterfazRed>`.
+- Selector de interfaz que muestra el nombre proporcionado por el sistema operativo.
+- Registro de `InterfazRedService` en `Program.cs` con `AddScoped`.
+- Referencia al paquete `System.Management` en el proyecto.
 
-- Nombre.
-- DireccionIP.
-- DireccionMac.
-- Tipo.
+### Archivos relevantes actuales
 
-El modelo también tiene un constructor que recibe esos cuatro datos y los asigna a sus propiedades.
+`src/ProyectoRed.Web/Services/InterfazRedService.cs`
 
-También se creó Services/InterfazRedService.cs. Actualmente el servicio:
+Contiene la lógica de enumeración de interfaces y la detección específica de interfaz física para Linux y Windows.
 
-- obtiene las interfaces con NetworkInterface.GetAllNetworkInterfaces();
-- crea una List<InterfazRed> vacía;
-- todavía debe recorrer las interfaces, extraer los datos necesarios y construir los objetos InterfazRed.
+`src/ProyectoRed.Web/Controllers/HomeController.cs`
 
-La página inicial personalizada contiene conceptualmente:
+Recibe `InterfazRedService` mediante inyección de dependencias y llama a `ObtenerInterfaces()`.
 
-## Aprendizaje de MVC y ritmo de trabajo
+`src/ProyectoRed.Web/Program.cs`
 
-El estudiante no quiere recibir todo el código terminado.
+Registra:
+
+`builder.Services.AddScoped<InterfazRedService>();`
+
+`src/ProyectoRed.Web/Views/Home/Index.cshtml`
+
+Recibe:
+
+`@model List<InterfazRed>`
+
+y muestra las interfaces disponibles en un `select`.
+
+## Estado de verificación de la detección física
+
+La arquitectura y el código para Linux y Windows ya fueron implementados.
+
+Todavía debe hacerse la verificación práctica en ambos sistemas:
+
+1. Probar en Debian qué interfaces quedan después del nuevo filtro.
+2. Comprobar que se excluyen interfaces virtuales como `docker0`, `br-...`, `veth...` y `tailscale0`.
+3. Probar posteriormente en Windows con adaptadores Ethernet físicos y adaptadores virtuales.
+4. Ajustar la implementación únicamente si las pruebas reales muestran casos que el enfoque actual no cubre.
+
+No agregar una propiedad como “confianza física” al modelo. La identificación de interfaz física debe resolverse internamente en el servicio.
+
+## Próximo paso inmediato
+
+Primero verificar el comportamiento actual de `InterfazRedService.ObtenerInterfaces()` en Debian.
+
+La meta de esta etapa es confirmar que el selector de la página muestre únicamente las interfaces Ethernet físicas relevantes.
+
+Una vez verificado Linux, realizar la prueba en Windows.
+
+Después de confirmar la selección de interfaz física, recién continuar con la selección de la interfaz para la etapa de descubrimiento.
+
+## Captura Ethernet
+
+Cuando la interfaz física esté identificada:
+
+UTP
+|
+v
+PC / Laptop
+|
+v
+Interfaz Ethernet física
+|
+v
+Captura Ethernet
+|
++--> ARP
++--> LLDP
+|
+v
+IP + MAC + Nombre
+
+En Windows se prevé utilizar Npcap.
+
+Para la captura y análisis de paquetes se prevé estudiar SharpPcap y PacketDotNet.
+
+No implementar Npcap, SharpPcap ni PacketDotNet antes de que corresponda en el avance.
+
+## Alcance de la primera versión
+
+La primera versión debe limitarse a:
+
+IP + MAC + Nombre
+
+No incorporar todavía:
+
+- escaneo completo de redes;
+- descubrimiento masivo de subredes;
+- detección de puertos;
+- sistema operativo;
+- SNMP;
+- inventario avanzado;
+- base de datos;
+- historial;
+- topología;
+- mapas.
+
+## Evolución futura
+
+V1 — IP + MAC + Nombre
+V2 — Mejoras de descubrimiento
+V3 — SNMP / información de administración
+V4 — LLDP y vecinos
+V5 — Relaciones entre dispositivos
+V6 — Descubrimiento de topología
+V7 — Mapa visual de red
+
+## Forma de desarrollo
+
+El proyecto tiene un objetivo educativo. Se está construyendo como práctica de C#, ASP.NET Core y redes.
 
 La metodología debe ser:
 
 1. Explicar el objetivo del paso actual.
-2. Explicar solamente los conceptos, clases, métodos o propiedades necesarios.
+2. Explicar solamente los conceptos necesarios.
 3. Dar pistas para que el estudiante escriba el código.
 4. Esperar el intento del estudiante.
 5. Revisar el código.
@@ -148,93 +319,5 @@ paqueteRecibido
 
 Los comentarios y la documentación deben estar en español.
 
-## Alcance de la primera versión
+No cambiar estos criterios sin una razón técnica clara.
 
-La primera versión debe limitarse a:
-
-IP + MAC + Nombre
-
-No incorporar todavía:
-
-- escaneo completo de redes;
-- descubrimiento masivo de subredes;
-- detección de puertos;
-- sistema operativo;
-- SNMP;
-- inventario avanzado;
-- base de datos;
-- historial;
-- topología;
-- mapas.
-
-## Evolución futura
-
-Una evolución posible es:
-
-V1 — IP + MAC + Nombre
-V2 — Mejoras de descubrimiento
-V3 — SNMP / información de administración
-V4 — LLDP y vecinos
-V5 — Relaciones entre dispositivos
-V6 — Descubrimiento de topología
-V7 — Mapa visual de red
-
-## Próximo paso inmediato
-
-Completar InterfazRedService.ObtenerInterfaces() para transformar los objetos NetworkInterface obtenidos del sistema en objetos propios InterfazRed.
-
-El flujo previsto es:
-
-NetworkInterface[]
-|
-+--> extraer nombre
-+--> extraer IPv4
-+--> extraer MAC
-+--> extraer tipo
-|
-v
-List<InterfazRed>
-
-Una vez que esto funcione, se deberá conectar el servicio con el Controller y hacer que la vista utilice el nuevo modelo, manteniendo la selección de la interfaz Ethernet para la etapa posterior de descubrimiento.
-
-## Problema pendiente actual
-
-Se intentó filtrar la interfaz local utilizando OperationalStatus.Up y NetworkInterfaceType.Ethernet.
-
-Durante las pruebas en Debian se observó que Linux puede presentar interfaces virtuales creadas por Docker y otros componentes como interfaces de tipo Ethernet.
-
-Se observaron nombres como:
-
-lo
-enp2s0
-tailscale0
-docker0
-br-...
-veth...
-
-Por lo tanto, el problema pendiente es encontrar una manera correcta y portable de identificar la interfaz Ethernet física sin depender de nombres concretos como enp2s0.
-
-Ese es el siguiente problema técnico a estudiar antes de pasar a la captura Ethernet.
-
-## Objetivo técnico posterior
-
-Cuando la interfaz física esté identificada:
-
-UTP
-|
-v
-PC / Laptop
-|
-v
-Interfaz Ethernet física
-|
-v
-Captura Ethernet
-|
-+--> ARP
-+--> LLDP
-|
-v
-IP + MAC + Nombre
-
-No avanzar todavía a topología ni funcionalidades avanzadas.
