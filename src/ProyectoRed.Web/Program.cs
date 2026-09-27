@@ -24,12 +24,15 @@ app.UseRouting();
 
 app.UseAuthorization();
 
-app.MapStaticAssets();
+// UseStaticFiles sirve directamente el contenido de wwwroot.
+// Evitamos MapStaticAssets porque depende de un manifiesto de recursos
+// estáticos que no necesitamos para esta aplicación MVC y que puede
+// complicar una publicación single-file.
+app.UseStaticFiles();
 
 app.MapControllerRoute(
     name: "default",
-    pattern: "{controller=Home}/{action=Index}/{id?}")
-    .WithStaticAssets();
+    pattern: "{controller=Home}/{action=Index}/{id?}");
 
 // En Windows de campo la aplicación se abre desde el navegador predeterminado.
 // En Linux se mantiene el comportamiento normal de desarrollo sin abrir interfaz gráfica.
