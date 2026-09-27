@@ -480,3 +480,8 @@ $RECYCLE.BIN/
 
 # Vim temporary swap files
 *.swp
+
+# ProyectoRed - artefactos de distribucion
+dist/
+installer/dist/
+installer/dependencies/
