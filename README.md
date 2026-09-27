@@ -206,9 +206,10 @@ La ausencia de LLDP no implica un fallo del capturador; el dispositivo o la red 
 
 La captura ya se utiliza para obtener información del dispositivo remoto en una conexión física directa:
 
-- La MAC se obtiene del origen Ethernet remoto.
+- La MAC y la IPv4 se toman del mismo dispositivo observado: ambas quedan asociadas por la MAC Ethernet de origen.
 - La IPv4 se obtiene del emisor de ARP o de un paquete IPv4 cuando aparece.
-- El nombre se obtiene del TLV System Name de LLDP cuando está presente.
+- El nombre se obtiene del TLV System Name de LLDP y se asocia a la misma MAC cuando está presente.
+- No se mezclan una MAC de un paquete con una IP de otro dispositivo.
 - La captura está limitada a unos segundos para evitar loops y no ejecutarse indefinidamente.
 
 Esta estrategia es **pasiva** y está pensada para el escenario de conexión directa. No realiza todavía un escaneo de toda la subred.
