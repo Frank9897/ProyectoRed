@@ -17,6 +17,16 @@ public class CapturadorPaquetesService
 
         ICaptureDevice dispositivoSeleccionado = null;
 
+        // Mostramos temporalmente los dispositivos que SharpPcap detecta.
+        // Esto permite comprobar cómo identifica Windows cada adaptador.
+        Console.WriteLine("Dispositivos de captura detectados por SharpPcap:");
+
+        foreach (var dispositivo in dispositivos)
+        {
+            Console.WriteLine(
+                $"  Name: {dispositivo.Name} | Description: {dispositivo.Description}");
+        }
+
         foreach (var dispositivo in dispositivos)
         {
             // En Linux, SharpPcap normalmente usa el mismo nombre de
