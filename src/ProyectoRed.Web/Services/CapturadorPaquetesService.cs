@@ -57,11 +57,15 @@ public class CapturadorPaquetesService
                 $"No se encontró el dispositivo de captura asociado a '{nombreInterfaz}'.");
         }
 
-        DispositivoDetectado resultado =
-            new DispositivoDetectado();
-
         PhysicalAddress direccionMacLocal =
             interfazRed.GetPhysicalAddress();
+
+        // Cada dispositivo observado queda asociado a su MAC.
+        // IP y nombre solamente se agregan al mismo candidato que
+        // originó el paquete correspondiente.
+        Dictionary<string, DispositivoDetectado> dispositivosObservados =
+            new Dictionary<string, DispositivoDetectado>(
+                StringComparer.OrdinalIgnoreCase);
 
         void CuandoLlegaPaquete(
             object sender,
@@ -96,20 +100,28 @@ public class CapturadorPaquetesService
                 return;
             }
 
-            // En una conexión directa, el primer MAC remoto que vemos
-            // corresponde al dispositivo conectado al otro extremo.
-            if (string.IsNullOrWhiteSpace(resultado.DireccionMac))
+            string macRemota =
+                FormatearMac(direccionMacOrigen);
+
+            if (!dispositivosObservados.TryGetValue(
+                    macRemota,
+                    out DispositivoDetectado resultado))
             {
-                resultado.DireccionMac =
-                    FormatearMac(direccionMacOrigen);
+                resultado = new DispositivoDetectado
+                {
+                    DireccionMac = macRemota
+                };
+
+                dispositivosObservados.Add(
+                    macRemota,
+                    resultado);
             }
 
-            // ARP proporciona directamente MAC + IPv4 del emisor.
+            // ARP relaciona en la misma trama la MAC e IP del emisor.
             ArpPacket arp =
                 ethernet.PayloadPacket as ArpPacket;
 
             if (arp != null &&
-                string.IsNullOrWhiteSpace(resultado.DireccionIP) &&
                 arp.SenderProtocolAddress != null &&
                 !arp.SenderProtocolAddress.Equals(IPAddress.Any))
             {
@@ -117,12 +129,11 @@ public class CapturadorPaquetesService
                     arp.SenderProtocolAddress.ToString();
             }
 
-            // IPv4 permite obtener la dirección IP del origen.
+            // IPv4 relaciona en la misma trama la MAC Ethernet e IP origen.
             IPv4Packet ipv4 =
                 ethernet.PayloadPacket as IPv4Packet;
 
             if (ipv4 != null &&
-                string.IsNullOrWhiteSpace(resultado.DireccionIP) &&
                 ipv4.SourceAddress != null &&
                 !ipv4.SourceAddress.Equals(IPAddress.Any))
             {
@@ -130,7 +141,8 @@ public class CapturadorPaquetesService
                     ipv4.SourceAddress.ToString();
             }
 
-            // LLDP puede proporcionar el nombre del equipo.
+            // LLDP relaciona en la misma trama la MAC origen con
+            // el System Name del dispositivo que anuncia.
             LldpPacket lldp =
                 ethernet.PayloadPacket as LldpPacket;
 
@@ -168,8 +180,8 @@ public class CapturadorPaquetesService
         {
             dispositivoSeleccionado.StartCapture();
 
-            // Escuchamos durante unos segundos para permitir que el
-            // dispositivo remoto genere tráfico.
+            // La captura dura solamente unos segundos.
+            // No dejamos el capturador ejecutándose indefinidamente.
             await Task.Delay(TimeSpan.FromSeconds(5));
         }
         finally
@@ -184,21 +196,33 @@ public class CapturadorPaquetesService
             Console.WriteLine("Captura finalizada.");
         }
 
-        if (string.IsNullOrWhiteSpace(resultado.DireccionMac))
+        // Elegimos solamente candidatos cuya MAC e IP quedaron
+        // relacionadas por tráfico originado por ese mismo MAC.
+        DispositivoDetectado resultadoFinal =
+            dispositivosObservados.Values
+                .FirstOrDefault(dispositivo =>
+                    !string.IsNullOrWhiteSpace(
+                        dispositivo.DireccionIP));
+
+        if (resultadoFinal == null)
         {
+            resultadoFinal =
+                dispositivosObservados.Values.FirstOrDefault()
+                ?? new DispositivoDetectado();
+
             Console.WriteLine(
-                "No se detectó tráfico de un dispositivo remoto durante la prueba.");
+                "No se obtuvo una pareja MAC + IP durante la captura.");
         }
         else
         {
             Console.WriteLine(
-                $"Dispositivo | " +
-                $"IP: {resultado.DireccionIP} | " +
-                $"MAC: {resultado.DireccionMac} | " +
-                $"Nombre: {resultado.Nombre}");
+                $"Dispositivo observado | " +
+                $"IP: {resultadoFinal.DireccionIP} | " +
+                $"MAC: {resultadoFinal.DireccionMac} | " +
+                $"Nombre: {resultadoFinal.Nombre}");
         }
 
-        return resultado;
+        return resultadoFinal;
     }
 
     private string FormatearMac(PhysicalAddress direccionMac)
