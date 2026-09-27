@@ -1,16 +1,75 @@
-﻿@{
+﻿@model List<System.Net.NetworkInformation.NetworkInterface>
+@{
     ViewData["Title"] = "ProyectoRed";
 }
 
+
+
+
+
 <div class="text-center">
+
     <h1 class="display-4">ProyectoRed</h1>
 
     <p class="lead">
         Identificador local de dispositivos de red
     </p>
 
-    <p>
-        Esta aplicación permitirá detectar información de dispositivos
-        conectados mediante una interfaz Ethernet.
-    </p>
+</div>
+
+<div class="row justify-content-center mt-4">
+    <div class="col-12 col-md-8 col-lg-6">
+
+        <div class="card shadow-sm">
+
+            <div class="card-body">
+
+                <h2 class="h4 mb-4">
+                    Detección de dispositivo
+                </h2>
+
+                <div class="mb-3">
+
+                    <label for="interfazRed" class="form-label">
+                        Interfaz de red
+                    </label>
+
+                    <select id="interfazRed" class="form-select">
+                        
+                        <option value="">
+                            Seleccione una interfaz...
+                        </option>
+
+                        @foreach (var interfaz in Model)
+                        {
+                            <option value="@interfaz.Id">
+                                @interfaz.Name
+                            </option>
+                        }
+
+                    </select>
+
+                </div>
+
+                <div class="d-grid">
+
+                    <button type="button" class="btn btn-primary">
+                        Comenzar
+                    </button>
+
+                </div>
+
+                <div class="mt-4">
+
+                    <p class="mb-0">
+                        <strong>Estado:</strong> Esperando
+                    </p>
+
+                </div>
+
+            </div>
+
+        </div>
+
+    </div>
 </div>
