@@ -1,4 +1,4 @@
-﻿@model List<System.Net.NetworkInformation.NetworkInterface>
+﻿@model List<InterfazRed>
 @{
     ViewData["Title"] = "ProyectoRed";
 }
@@ -40,10 +40,10 @@
                             Seleccione una interfaz...
                         </option>
 
-                        @foreach (var interfaz in Model)
+                        @foreach (InterfazRed interfaz in Model)
                         {
-                            <option value="@interfaz.Id">
-                                @interfaz.Name
+                            <option value="@interfaz.Nombre">
+                                @interfaz.Nombre
                             </option>
                         }
 
