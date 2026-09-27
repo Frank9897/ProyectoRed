@@ -19,7 +19,20 @@ public class CapturadorPaquetesService
 
         foreach (var dispositivo in dispositivos)
         {
-            if (dispositivo.Name == nombreInterfaz)
+            // En Linux, SharpPcap normalmente usa el mismo nombre de
+            // interfaz que NetworkInterface (por ejemplo, enp2s0).
+            // En Windows, el nombre amigable puede ser "Ethernet 2",
+            // mientras que SharpPcap utiliza internamente un nombre
+            // de captura diferente. La descripción suele conservar
+            // el nombre amigable mostrado por Windows.
+            if (string.Equals(
+                    dispositivo.Name,
+                    nombreInterfaz,
+                    StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(
+                    dispositivo.Description,
+                    nombreInterfaz,
+                    StringComparison.OrdinalIgnoreCase))
             {
                 dispositivoSeleccionado = dispositivo;
                 break;
