@@ -5,8 +5,12 @@ namespace ProyectoRed.Web.Services;
 
 public class CapturadorPaquetesService
 {
-    public void Capturar(string nombreInterfaz)
+    private bool paqueteMostrado;
+
+    public async Task CapturarAsync(string nombreInterfaz)
     {
+        paqueteMostrado = false;
+
         CaptureDeviceList dispositivos =
             CaptureDeviceList.Instance;
 
@@ -35,13 +39,38 @@ public class CapturadorPaquetesService
         Console.WriteLine(
             $"Captura iniciada en: {dispositivoSeleccionado.Name}");
 
-        dispositivoSeleccionado.StartCapture();
+        try
+        {
+            dispositivoSeleccionado.StartCapture();
+
+            // La prueba dura solamente unos segundos.
+            // Así evitamos dejar la captura funcionando indefinidamente.
+            await Task.Delay(TimeSpan.FromSeconds(5));
+        }
+        finally
+        {
+            dispositivoSeleccionado.StopCapture();
+
+            dispositivoSeleccionado.OnPacketArrival -=
+                CuandoLlegaPaquete;
+
+            dispositivoSeleccionado.Close();
+
+            Console.WriteLine("Captura finalizada.");
+        }
     }
 
     private void CuandoLlegaPaquete(
         object sender,
         PacketCapture captura)
     {
+        // No mostramos todas las tramas recibidas.
+        // Solo necesitamos una para comprobar el análisis Ethernet.
+        if (paqueteMostrado)
+        {
+            return;
+        }
+
         var capturaBruta = captura.GetPacket();
 
         // En esta etapa solo procesamos tramas Ethernet.
@@ -72,5 +101,7 @@ public class CapturadorPaquetesService
             $"Tipo: {ethernet.Type} " +
             $"(0x{((ushort)ethernet.Type):X4}) | " +
             $"Longitud: {capturaBruta.Data.Length} bytes");
+
+        paqueteMostrado = true;
     }
 }
