@@ -239,8 +239,13 @@ public class CapturadorPaquetesService
             tramaArp.PayloadPacket =
                 solicitudArp;
 
-            dispositivoSeleccionado.SendPacket(
-                tramaArp.Bytes);
+            if (dispositivoSeleccionado is not IInjectionDevice dispositivoInyeccion)
+            {
+                throw new InvalidOperationException(
+                    "El dispositivo de captura seleccionado no permite inyección de paquetes.");
+            }
+
+            dispositivoInyeccion.SendPacket(tramaArp);
 
             Console.WriteLine(
                 $"Consulta ARP enviada para: {puertaEnlace}");
