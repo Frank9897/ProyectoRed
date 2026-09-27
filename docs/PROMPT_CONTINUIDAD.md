@@ -280,8 +280,8 @@ La siguiente etapa es probar la detección pasiva con un dispositivo conectado d
 La captura actual trabaja durante unos segundos y recopila, cuando existen:
 
 - MAC remota desde Ethernet.
-- IPv4 desde ARP o IPv4.
-- Nombre desde LLDP System Name.
+- IPv4 desde ARP o IPv4, asociada a la MAC que originó ese mismo tráfico.
+- Nombre desde LLDP System Name, asociado a la misma MAC.
 
 No se debe tomar el primer paquete ARP de una red compartida como identificación automática del dispositivo.
 
