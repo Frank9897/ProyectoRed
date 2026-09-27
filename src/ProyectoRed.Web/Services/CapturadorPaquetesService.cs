@@ -1,3 +1,4 @@
+using PacketDotNet;
 using SharpPcap;
 
 namespace ProyectoRed.Web.Services;
@@ -41,10 +42,35 @@ public class CapturadorPaquetesService
         object sender,
         PacketCapture captura)
     {
-        var paquete = captura.GetPacket();
+        var capturaBruta = captura.GetPacket();
+
+        // En esta etapa solo procesamos tramas Ethernet.
+        if (capturaBruta.LinkLayerType != LinkLayers.Ethernet)
+        {
+            return;
+        }
+
+        // PacketDotNet interpreta los bytes capturados
+        // según la capa de enlace de la captura.
+        Packet paquete =
+            Packet.ParsePacket(
+                capturaBruta.LinkLayerType,
+                capturaBruta.Data);
+
+        EthernetPacket ethernet =
+            paquete as EthernetPacket;
+
+        if (ethernet == null)
+        {
+            return;
+        }
 
         Console.WriteLine(
-            $"Paquete recibido - " +
-            $"Longitud: {paquete.Data.Length} bytes");
+            $"Ethernet | " +
+            $"Origen: {ethernet.SourceHardwareAddress} | " +
+            $"Destino: {ethernet.DestinationHardwareAddress} | " +
+            $"Tipo: {ethernet.Type} " +
+            $"(0x{((ushort)ethernet.Type):X4}) | " +
+            $"Longitud: {capturaBruta.Data.Length} bytes");
     }
 }
