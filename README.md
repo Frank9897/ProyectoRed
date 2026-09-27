@@ -33,8 +33,48 @@ No se requiere durante el uso de campo:
 - Tailscale.
 - Docker.
 - GitHub.
+- .NET instalado previamente.
 
-La aplicación final se publicará de forma autónoma para evitar exigir que la PC de campo tenga .NET previamente instalado.
+La aplicación final se publica como **self-contained para Windows x64**, incluyendo el runtime de .NET y las dependencias administradas en un ejecutable. Por tanto, la PC de campo no necesita instalar .NET por separado.
+
+## Ejecución en campo
+
+La aplicación se ejecuta mediante:
+
+~~~text
+ProyectoRed.Web.exe
+       |
+       +--> inicia servidor ASP.NET Core local
+       |
+       +--> http://127.0.0.1:5094
+       |
+       +--> abre el navegador predeterminado
+~~~
+
+La aplicación utiliza **HTTP local** para evitar depender de un certificado HTTPS de desarrollo.
+
+La publicación actual está preparada para Windows x64 y se configura mediante:
+
+~~~text
+src/ProyectoRed.Web/Properties/PublishProfiles/
+    WindowsSelfContained.pubxml
+~~~
+
+El procedimiento de publicación está documentado en:
+
+~~~text
+docs/DEPLOYMENT_WINDOWS.md
+~~~
+
+### Importante sobre captura de paquetes
+
+El runtime de .NET sí queda incluido en la publicación self-contained.
+
+La captura Ethernet en Windows utiliza **Npcap**, que es un componente del sistema que instala un controlador de captura. Npcap no forma parte del runtime de .NET y no se puede considerar resuelto únicamente con una publicación single-file.
+
+La edición gratuita de Npcap no permite redistribución externa con un producto. Para incluir su instalador dentro de ProyectoRed se requiere la licencia correspondiente de Npcap OEM.
+
+Por este motivo, la publicación de ProyectoRed resuelve la dependencia de **.NET**, mientras que la instalación de **Npcap** se tratará como una etapa separada del despliegue de campo.
 
 ## Primera versión
 
@@ -67,11 +107,15 @@ HomeController
     v
 InterfazRedService
     |
-    v
-NetworkInterface
-    |
     +--> detección de interfaz física según sistema operativo
-    +--> ARP / LLDP (etapa posterior)
+    |
+    v
+CapturadorPaquetesService
+    |
+    +--> SharpPcap
+    +--> PacketDotNet
+    +--> Ethernet
+    +--> LLDP
     |
     v
 IP + MAC + Nombre
@@ -81,7 +125,7 @@ La interfaz web y la lógica de descubrimiento deben mantenerse separadas para p
 
 ## Tecnologías
 
-### Entorno actual
+### Entorno de desarrollo
 
 - Debian 13 como servidor de desarrollo y laboratorio.
 - .NET 10.
@@ -91,54 +135,36 @@ La interfaz web y la lógica de descubrimiento deben mantenerse separadas para p
 - Docker disponible en el laboratorio.
 - Tailscale disponible en el laboratorio.
 
-### Detección prevista
+### Captura y análisis
 
-- `System.Net.NetworkInformation`.
-- `System.Management` para la consulta de adaptadores en Windows.
-- Captura de paquetes Ethernet.
 - Npcap en Windows.
 - SharpPcap.
 - PacketDotNet.
 - ARP.
 - LLDP.
 
-### Identificación de interfaz física
+### Detección de interfaz física
 
-El servicio actual no depende de nombres como `enp2s0` o `Ethernet` para decidir si una interfaz es física.
+- System.Net.NetworkInformation.
+- System.Management para Windows.
+- Linux: /sys/class/net/<interfaz>/device.
+- Windows: MSFT_NetAdapter.
 
-En Linux se utiliza la relación de la interfaz con el dispositivo de hardware mediante `/sys/class/net/<interfaz>/device`.
+## Identificación de interfaz física
 
-En Windows se consulta `MSFT_NetAdapter` y se filtran adaptadores con:
+El servicio actual no depende de nombres como enp2s0 o Ethernet para decidir si una interfaz es física.
 
-- `ConnectorPresent = TRUE`.
-- `HardwareInterface = TRUE`.
-- `Virtual = FALSE`.
+En Linux se utiliza la relación de la interfaz con el dispositivo de hardware mediante /sys/class/net/<interfaz>/device.
 
-La implementación ya está presente en `InterfazRedService`.
+En Windows se consulta MSFT_NetAdapter y se filtran adaptadores con:
 
-Npcap y las bibliotecas de captura todavía no forman parte de la implementación actual. La preparación/instalación de Npcap deberá automatizarse posteriormente.
+- ConnectorPresent = TRUE.
+- HardwareInterface = TRUE.
+- Virtual = FALSE.
 
-## Estructura actual
+La implementación ya está presente en InterfazRedService.
 
-~~~text
-ProyectoRed/
-|
-|-- ProyectoRed.slnx
-|-- README.md
-|-- .gitignore
-|-- docs/
-|   +-- PROMPT_CONTINUIDAD.md
-|-- pruebas/
-+-- src/
-    +-- ProyectoRed.Web/
-        |-- Controllers/
-        |-- Models/
-        |-- Services/
-        |-- Views/
-        |-- wwwroot/
-        |-- Program.cs
-        +-- ProyectoRed.Web.csproj
-~~~
+No se añade ninguna propiedad de “confianza física” al modelo.
 
 ## Estado actual
 
@@ -146,33 +172,53 @@ Ya se encuentran implementados:
 
 - Solución ProyectoRed.slnx.
 - Proyecto ASP.NET Core MVC.
-- Configuración en .NET 10.
+- .NET 10.
 - Ejecución local mediante localhost.
-- Página inicial personalizada.
-- Modelo `InterfazRed` con nombre, IPv4, MAC y tipo.
-- Servicio `InterfazRedService`.
-- Lectura de interfaces mediante `NetworkInterface.GetAllNetworkInterfaces()`.
-- Obtención del nombre de interfaz.
-- Obtención y formateo de la dirección MAC.
-- Obtención de direcciones IPv4.
-- Obtención de `NetworkInterfaceType`.
-- Filtro por `OperationalStatus.Up`.
-- Filtro por `NetworkInterfaceType.Ethernet`.
-- Detección adicional de interfaz física para Linux y Windows.
-- Registro de `InterfazRedService` mediante inyección de dependencias.
-- Paso de una colección `List<InterfazRed>` desde el controlador a una vista Razor.
-- Vista `Index.cshtml` adaptada al modelo `InterfazRed`.
-- Selector inicial de interfaz que muestra el nombre de la interfaz.
-- Referencia al paquete `System.Management` versión `10.0.12`.
+- Servidor HTTP local en 127.0.0.1:5094.
+- Apertura automática del navegador en Windows.
+- Modelo InterfazRed con nombre, IPv4, MAC y tipo.
+- Servicio InterfazRedService.
+- Enumeración de interfaces mediante NetworkInterface.GetAllNetworkInterfaces().
+- Filtro por OperationalStatus.Up.
+- Filtro por NetworkInterfaceType.Ethernet.
+- Detección de interfaz física específica para Linux y Windows.
+- Registro mediante inyección de dependencias.
+- Captura de paquetes con SharpPcap.
+- Análisis Ethernet con PacketDotNet.
+- Prueba de captura limitada a unos segundos para evitar ejecución indefinida.
+- Detección de paquetes LLDP.
+- Lectura del System Name de LLDP cuando el paquete lo proporciona.
+- Publicación prevista como ejecutable Windows x64 self-contained y single-file.
 
-### Verificación pendiente
+### Verificación actual
 
-La implementación de detección física ya está escrita, pero debe verificarse con pruebas reales en:
+En Debian ya se comprobó que:
 
-- Debian, para comprobar qué interfaces físicas quedan y que se excluyan virtuales como Docker, bridges, veth y Tailscale.
-- Windows, para comprobar el comportamiento con adaptadores Ethernet físicos y virtuales.
+- enp2s0 puede abrirse con SharpPcap ejecutando la aplicación con permisos adecuados.
+- La captura Ethernet funciona.
+- PacketDotNet puede interpretar paquetes Ethernet.
+- En una prueba de 5 segundos no apareció LLDP.
 
-No se debe añadir una propiedad de “confianza física” al modelo. La decisión se realiza internamente en el servicio.
+La ausencia de LLDP no implica un fallo del capturador; el dispositivo o la red de prueba puede no estar enviando anuncios LLDP.
+
+## Alcance de la primera versión
+
+La primera versión debe limitarse a:
+
+IP + MAC + Nombre
+
+No incorporar todavía:
+
+- escaneo completo de redes;
+- descubrimiento masivo de subredes;
+- detección de puertos;
+- sistema operativo;
+- SNMP;
+- inventario avanzado;
+- base de datos;
+- historial;
+- topología;
+- mapas.
 
 ## Evolución futura
 
@@ -200,11 +246,9 @@ V7  Mapa visual de red
 
 ## Próximo paso
 
-Verificar en Debian el resultado real de la detección de interfaces físicas.
+Antes de continuar agregando mecanismos de descubrimiento, queda preparada la parte de **despliegue autónomo para Windows**.
 
-Después realizar la prueba equivalente en Windows.
-
-Cuando la selección de la interfaz física esté confirmada, avanzar a la etapa de descubrimiento mediante captura Ethernet. No implementar todavía Npcap, SharpPcap ni PacketDotNet.
+Después se continuará con la estrategia de descubrimiento de IP/MAC/Nombre. No se debe tomar el primer paquete ARP observado como si fuera automáticamente el dispositivo objetivo, porque puede pertenecer a otro equipo de la red.
 
 ## Forma de desarrollo
 
@@ -213,18 +257,14 @@ El proyecto tiene también un objetivo educativo. Se está construyendo como pr�
 La metodología acordada es:
 
 1. Avanzar paso a paso.
-2. Trabajar archivo por archivo.
-3. Explicar primero el concepto necesario.
-4. El estudiante escribe el código.
-5. Después se revisa y corrige el código.
-6. Mantener nombres de variables, clases y métodos en español cuando sea razonable.
-7. Mantener comentarios y documentación en español.
-8. No adelantar componentes que todavía no sean necesarios.
-
-La prioridad es que el código sea comprendido y no solamente copiado.
+2. Explicar el concepto necesario antes de aplicar cada cambio importante.
+3. Mantener nombres de variables, clases y métodos en español cuando sea razonable.
+4. Mantener comentarios y documentación en español.
+5. No adelantar componentes que todavía no sean necesarios.
+6. Cuando una modificación sea suficientemente concreta, puede realizarse directamente en el repositorio para que luego se pruebe mediante git pull, dotnet build y dotnet run.
 
 ## Continuidad
 
 El contexto completo para retomar la tutoría y las decisiones técnicas del proyecto se encuentra en:
 
-[docs/PROMPT_CONTINUIDAD.md](docs/PROMPT_CONTINUIDAD.md)
+docs/PROMPT_CONTINUIDAD.md
