@@ -16,6 +16,9 @@ document.addEventListener("DOMContentLoaded", function () {
     const resultadoMac =
         document.getElementById("resultadoMac");
 
+    const resultadoTipoDireccion =
+        document.getElementById("resultadoTipoDireccion");
+
     const resultadoNombre =
         document.getElementById("resultadoNombre");
 
@@ -175,6 +178,9 @@ document.addEventListener("DOMContentLoaded", function () {
             const nombreDetectado =
                 datos.nombre || "";
 
+            const tipoDireccionDetectada =
+                datos.tipoDireccionIP || "";
+
             if (!macDetectada) {
                 estadoDeteccion.textContent =
                     "No se detectó ningún dispositivo durante la prueba.";
@@ -187,6 +193,9 @@ document.addEventListener("DOMContentLoaded", function () {
 
             resultadoMac.textContent =
                 macDetectada;
+
+            resultadoTipoDireccion.textContent =
+                tipoDireccionDetectada || "No disponible";
 
             resultadoNombre.textContent =
                 nombreDetectado || "No disponible";
