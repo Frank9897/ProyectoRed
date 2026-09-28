@@ -13,19 +13,22 @@ public class HomeController : Controller
     private readonly AccesoDispositivoService _accesoDispositivoService;
     private readonly ClasificadorDireccionService _clasificadorDireccionService;
     private readonly HistorialDispositivosService _historialDispositivosService;
+    private readonly IWebHostEnvironment _entornoWeb;
 
     public HomeController(
         InterfazRedService interfazRedService,
         CapturadorPaquetesService capturadorPaquetesService,
         AccesoDispositivoService accesoDispositivoService,
         ClasificadorDireccionService clasificadorDireccionService,
-        HistorialDispositivosService historialDispositivosService)
+        HistorialDispositivosService historialDispositivosService,
+        IWebHostEnvironment entornoWeb)
     {
         _capturadorPaquetesService = capturadorPaquetesService;
         _accesoDispositivoService = accesoDispositivoService;
         _clasificadorDireccionService = clasificadorDireccionService;
         _interfazRedService = interfazRedService;
         _historialDispositivosService = historialDispositivosService;
+        _entornoWeb = entornoWeb;
     }
 
     public IActionResult Index()
@@ -183,6 +186,26 @@ public class HomeController : Controller
         return await Descubrir(
             nombreInterfaz,
             string.Empty);
+    }
+
+    [HttpGet]
+    public IActionResult DescargarPruebaWindows()
+    {
+        string ruta =
+            Path.Combine(
+                _entornoWeb.WebRootPath,
+                "descargas",
+                "ProyectoRed_Prueba_Windows.bat");
+
+        if (!System.IO.File.Exists(ruta))
+        {
+            return NotFound();
+        }
+
+        return PhysicalFile(
+            ruta,
+            "application/octet-stream",
+            "ProyectoRed_Prueba_Windows.bat");
     }
 
     [HttpGet]
