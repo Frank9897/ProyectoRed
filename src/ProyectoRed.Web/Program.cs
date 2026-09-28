@@ -11,6 +11,7 @@ builder.WebHost.UseUrls(UrlLocal);
 builder.Services.AddControllersWithViews();
 builder.Services.AddScoped<InterfazRedService>();
 builder.Services.AddScoped<CapturadorPaquetesService>();
+builder.Services.AddScoped<AccesoDispositivoService>();
 
 var app = builder.Build();
 
