@@ -92,7 +92,7 @@ Nombre   SWITCH-PISO-1
 
 El nombre puede no estar disponible y la aplicación debe poder indicar esa situación.
 
-No forman parte de esta primera versión el escaneo completo de redes, descubrimiento masivo de subredes, detección de puertos, identificación del sistema operativo, SNMP, historial, topología ni mapas de red.
+No forman parte de esta primera versión la detección de puertos, identificación del sistema operativo, SNMP, inventario avanzado, topología ni mapas de red.
 
 ## Arquitectura actual
 
@@ -236,14 +236,11 @@ IP + MAC + Nombre
 
 No incorporar todavía:
 
-- escaneo completo de redes;
-- descubrimiento masivo de subredes;
 - detección de puertos;
 - sistema operativo;
 - SNMP;
 - inventario avanzado;
 - base de datos;
-- historial;
 - topología;
 - mapas.
 
