@@ -257,50 +257,12 @@ public class CapturadorPaquetesService
                 return;
             }
 
-            // Si el vecino directamente conectado intercambia tráfico IPv4
-            // con la PC, la propia trama ya nos da IP y MAC sin necesitar ARP.
-            IPv4Packet ipv4 =
-                ethernet.PayloadPacket as IPv4Packet;
-
-            if (ipv4 != null &&
-                !EsNuestraIp(ipv4.SourceAddress))
-            {
-                string macFuenteIpv4 =
-                    FormatearMac(
-                        ethernet.SourceHardwareAddress);
-
-                bool destinoEsNuestraMac =
-                    EsNuestraMac(
-                        ethernet.DestinationHardwareAddress);
-
-                bool esVecinoDirecto =
-                    vecinoDirectoDetectado &&
-                    string.Equals(
-                        macFuenteIpv4,
-                        macVecinoDirecto,
-                        StringComparison.OrdinalIgnoreCase);
-
-                if ((!vecinoDirectoDetectado &&
-                     destinoEsNuestraMac) ||
-                    esVecinoDirecto)
-                {
-                    if (!string.IsNullOrWhiteSpace(
-                            ipv4.SourceAddress.ToString()) &&
-                        !ipv4.SourceAddress.Equals(IPAddress.Any))
-                    {
-                        resultado.DireccionIP =
-                            ipv4.SourceAddress.ToString();
-
-                        resultado.DireccionMac =
-                            macFuenteIpv4;
-
-                        RegistrarOrigen("IPv4");
-
-                        return;
-                    }
-                }
-            }
-
+            // No inferimos la IP de gestión a partir de un paquete IPv4
+            // genérico. Un router puede usar su MAC LAN como origen Ethernet
+            // mientras transporta tráfico cuya IP de origen pertenece a Internet
+            // (por ejemplo, una respuesta desde un servidor público). Esa IP no
+            // es la IP del vecino conectado.
+            
             ArpPacket arp =
                 ethernet.PayloadPacket as ArpPacket;
 
