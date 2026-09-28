@@ -57,6 +57,22 @@ document.addEventListener("DOMContentLoaded", function () {
         mensajeAcceso.classList.add("d-none");
         configuracionManual.classList.add("d-none");
 
+        // Abrimos la pestaña durante el click del usuario para evitar
+        // que el navegador bloquee la apertura después del fetch.
+        const ventanaInterfaz =
+            window.open("about:blank", "_blank");
+
+        if (!ventanaInterfaz) {
+            mensajeAcceso.textContent =
+                "El navegador bloqueó la nueva pestaña. Permita ventanas emergentes para ProyectoRed.";
+
+            mensajeAcceso.className =
+                "alert alert-warning mt-3 mb-0";
+
+            btnAbrirInterfaz.disabled = false;
+            return;
+        }
+
         try {
             const respuesta = await fetch(
                 "/Home/AccesoDispositivo?nombreInterfaz=" +
@@ -81,12 +97,12 @@ document.addEventListener("DOMContentLoaded", function () {
                 mensajeAcceso.className =
                     "alert alert-success mt-3 mb-0";
 
-                window.open(
-                    datos.urlInterfaz,
-                    "_blank",
-                    "noopener"
-                );
+                ventanaInterfaz.opener = null;
+                ventanaInterfaz.location.href =
+                    datos.urlInterfaz;
             }
+            else {
+                ventanaInterfaz.close();
             else {
                 mensajeAcceso.className =
                     "alert alert-warning mt-3 mb-0";
@@ -104,6 +120,8 @@ document.addEventListener("DOMContentLoaded", function () {
             }
         }
         catch (error) {
+            ventanaInterfaz.close();
+
             mensajeAcceso.textContent =
                 error.message;
 
