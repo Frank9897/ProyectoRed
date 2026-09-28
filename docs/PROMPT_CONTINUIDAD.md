@@ -307,6 +307,22 @@ Ejemplos:
 
 El objetivo es informar al técnico sin convertir la clasificación en un dato permanente del modelo principal.
 
+## Descubrimiento sin puerta de enlace
+
+La puerta de enlace IPv4 es opcional para el capturador.
+
+Con IPv4 + gateway:
+- se mantiene la consulta ARP dirigida al gateway;
+- se conserva el comportamiento que ya funcionaba para routers/modems.
+
+Sin gateway o sin IPv4 local:
+- no se produce un error;
+- se inicia igualmente la captura;
+- se espera una ventana limitada para detectar tráfico pasivo;
+- LLDP puede aportar la IP de gestión mediante su Management Address TLV.
+
+No se implementa un escaneo automático de toda la subred. Si un dispositivo es completamente silencioso y no existe una dirección conocida ni un protocolo de descubrimiento que anuncie su IP, la captura pasiva no puede garantizar la identificación de su IPv4.
+
 ## Acceso a la interfaz del dispositivo
 
 Cuando el resultado de descubrimiento contiene una IPv4, la vista permite intentar abrir la interfaz web del dispositivo.
