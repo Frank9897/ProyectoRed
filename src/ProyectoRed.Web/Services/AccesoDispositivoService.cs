@@ -58,7 +58,7 @@ public class AccesoDispositivoService
 
         bool usaDhcp = false;
 
-        try
+        if (OperatingSystem.IsWindows())
         {
             IPv4InterfaceProperties propiedadesIpv4 =
                 interfazRed.GetIPProperties().GetIPv4Properties();
@@ -66,10 +66,6 @@ public class AccesoDispositivoService
             usaDhcp =
                 propiedadesIpv4 != null &&
                 propiedadesIpv4.IsDhcpEnabled;
-        }
-        catch (PlatformNotSupportedException)
-        {
-            usaDhcp = false;
         }
 
         bool mismaRed =
