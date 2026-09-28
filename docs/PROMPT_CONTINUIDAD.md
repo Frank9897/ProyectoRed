@@ -316,12 +316,43 @@ Con IPv4 + gateway:
 - se conserva el comportamiento que ya funcionaba para routers/modems.
 
 Sin gateway o sin IPv4 local:
-- no se produce un error;
-- se inicia igualmente la captura;
-- se espera una ventana limitada para detectar tráfico pasivo;
-- LLDP puede aportar la IP de gestión mediante su Management Address TLV.
+- la captura se inicia igualmente;
+- se espera una ventana limitada;
+- se priorizan LLDP y CDP como protocolos de descubrimiento del vecino directamente conectado;
+- LLDP puede aportar la IP de gestión mediante Management Address TLV.
 
-No se implementa un escaneo automático de toda la subred. Si un dispositivo es completamente silencioso y no existe una dirección conocida ni un protocolo de descubrimiento que anuncie su IP, la captura pasiva no puede garantizar la identificación de su IPv4.
+Para el escenario de conexión directa, la captura no necesita modo promiscuo. Esto evita ampliar innecesariamente la captura a tráfico unicast que no está destinado a la PC.
+
+### Detección manual
+
+La interfaz de ProyectoRed ofrece una sección **Detección manual** con:
+
+- IP del dispositivo.
+- IP local de prueba.
+
+La **IP del dispositivo** permite hacer una consulta ARP puntual contra una única dirección conocida. Esto no es un escaneo de subred.
+
+La **IP local de prueba** se utiliza como IP de origen de la consulta ARP cuando la interfaz de la PC todavía no tiene una IPv4.
+
+Ninguno de esos campos modifica automáticamente la configuración de red de Windows.
+
+Cuando no se conoce la IP del dispositivo, la aplicación continúa con LLDP/CDP y captura pasiva. Si el dispositivo permanece completamente silencioso, no existe una forma universal de descubrir su IPv4 sin conocer una dirección objetivo o realizar descubrimiento activo de red. ProyectoRed no convierte ese caso en un escaneo automático de la subred.
+
+La interfaz también diferencia el estado del enlace del resultado de identificación:
+
+~~~text
+Enlace UTP activo
+    +
+IP/MAC/Nombre identificado
+
+o
+
+Enlace UTP activo
+    +
+sin identidad obtenida
+~~~
+
+Por lo tanto, la ausencia de IP/MAC ya no debe interpretarse automáticamente como ausencia física del dispositivo.
 
 ## Acceso a la interfaz del dispositivo
 
