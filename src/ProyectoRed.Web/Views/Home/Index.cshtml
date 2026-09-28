@@ -38,12 +38,73 @@
 
                         @foreach (InterfazRed interfaz in Model)
                         {
-                            <option value="@interfaz.Nombre">
+                            <option
+                                value="@interfaz.Nombre"
+                                data-ip="@interfaz.DireccionIP">
                                 @interfaz.Nombre
                             </option>
                         }
 
                     </select>
+
+                    <div class="form-text" id="estadoInterfaz">
+                        IPv4 actual: seleccione una interfaz.
+                    </div>
+
+                </div>
+
+                <div class="border rounded p-3 mb-3">
+
+                    <h3 class="h6 mb-2">
+                        Detección manual
+                    </h3>
+
+                    <p class="small text-muted mb-3">
+                        Úsela cuando el dispositivo tiene una IP conocida
+                        pero la PC no tiene IPv4, DHCP o puerta de enlace.
+                        No modifica la configuración de Windows.
+                    </p>
+
+                    <div class="mb-3">
+
+                        <label
+                            for="direccionIpObjetivo"
+                            class="form-label">
+                            IP del dispositivo
+                        </label>
+
+                        <input
+                            id="direccionIpObjetivo"
+                            type="text"
+                            class="form-control"
+                            placeholder="Ej. 192.168.0.1">
+
+                        <div class="form-text">
+                            La consulta ARP manual se realizará únicamente contra esta IP.
+                        </div>
+
+                    </div>
+
+                    <div class="mb-0">
+
+                        <label
+                            for="direccionIpLocalManual"
+                            class="form-label">
+                            IP local de prueba
+                        </label>
+
+                        <input
+                            id="direccionIpLocalManual"
+                            type="text"
+                            class="form-control"
+                            placeholder="Ej. 192.168.0.2">
+
+                        <div class="form-text">
+                            Opcional. Se usa como IP de origen de la consulta ARP
+                            si la interfaz no tiene una IPv4 configurada.
+                        </div>
+
+                    </div>
 
                 </div>
 
@@ -70,8 +131,15 @@
                         <div class="card-body">
 
                             <h3 class="h5 mb-3">
-                                Dispositivo detectado
+                                Resultado de la detección
                             </h3>
+
+                            <p class="mb-2">
+                                <strong>Enlace UTP:</strong>
+                                <span id="resultadoEnlace">
+                                    No disponible
+                                </span>
+                            </p>
 
                             <p class="mb-2">
                                 <strong>IP:</strong>
