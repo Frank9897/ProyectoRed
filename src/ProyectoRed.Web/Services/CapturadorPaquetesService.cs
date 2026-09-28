@@ -12,6 +12,8 @@ public class CapturadorPaquetesService
 {
     private readonly HistorialDispositivosService _historialDispositivosService;
 
+    public string UltimoOrigenDeteccion { get; private set; } = string.Empty;
+
     public CapturadorPaquetesService(
         HistorialDispositivosService historialDispositivosService)
     {
@@ -22,6 +24,8 @@ public class CapturadorPaquetesService
         string nombreInterfaz,
         string direccionIPObjetivo = null)
     {
+        UltimoOrigenDeteccion = string.Empty;
+
         CaptureDeviceList dispositivos =
             CaptureDeviceList.Instance;
 
@@ -470,6 +474,9 @@ public class CapturadorPaquetesService
             Console.WriteLine("Captura finalizada.");
         }
 
+        UltimoOrigenDeteccion =
+            origenDeteccion;
+
         if (string.IsNullOrWhiteSpace(resultado.DireccionMac))
         {
             Console.WriteLine(
@@ -482,7 +489,7 @@ public class CapturadorPaquetesService
                 $"IP: {resultado.DireccionIP} | " +
                 $"MAC: {resultado.DireccionMac} | " +
                 $"Nombre: {resultado.Nombre} | " +
-                $"Origen: {origenDeteccion}");
+                $"Origen: {UltimoOrigenDeteccion}");
 
             await _historialDispositivosService.RegistrarAsync(
                 new RegistroDispositivo
