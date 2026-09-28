@@ -862,7 +862,7 @@ public class CapturadorPaquetesService
             }
 
             byte[] protocolo =
-                datos.Skip(
+                datos.AsSpan(
                         posicion,
                         longitudProtocolo)
                     .ToArray();
@@ -889,7 +889,7 @@ public class CapturadorPaquetesService
                 longitudDireccion == 4)
             {
                 return new IPAddress(
-                    datos.Skip(
+                    datos.AsSpan(
                             posicion,
                             4)
                         .ToArray())
