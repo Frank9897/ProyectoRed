@@ -45,7 +45,9 @@ public class AccesoDispositivoService
         if (direccionLocal == null)
         {
             throw new InvalidOperationException(
-                $"La interfaz '{nombreInterfaz}' no tiene una dirección IPv4.");
+                $"La PC no tiene una dirección IPv4 configurada en la interfaz '{nombreInterfaz}'. " +
+                "La detección del dispositivo puede realizarse sin IPv4, " +
+                "pero para abrir su interfaz primero debe configurar una IPv4 en la PC.");
         }
 
         IPAddress direccionIPLocal =
