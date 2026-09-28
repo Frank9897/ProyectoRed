@@ -10,14 +10,17 @@ public class HomeController : Controller
     private readonly InterfazRedService _interfazRedService;
     private readonly CapturadorPaquetesService _capturadorPaquetesService;
     private readonly AccesoDispositivoService _accesoDispositivoService;
+    private readonly ClasificadorDireccionService _clasificadorDireccionService;
 
     public HomeController(
         InterfazRedService interfazRedService,
         CapturadorPaquetesService capturadorPaquetesService,
-        AccesoDispositivoService accesoDispositivoService)
+        AccesoDispositivoService accesoDispositivoService,
+        ClasificadorDireccionService clasificadorDireccionService)
     {
         _capturadorPaquetesService = capturadorPaquetesService;
         _accesoDispositivoService = accesoDispositivoService;
+        _clasificadorDireccionService = clasificadorDireccionService;
         _interfazRedService = interfazRedService;
     }
 
@@ -45,7 +48,22 @@ public class HomeController : Controller
                 await _capturadorPaquetesService.CapturarAsync(
                     nombreInterfaz);
 
-            return Json(resultado);
+            string clasificacionDireccion = string.Empty;
+
+            if (!string.IsNullOrWhiteSpace(resultado.DireccionIP))
+            {
+                clasificacionDireccion =
+                    _clasificadorDireccionService.Clasificar(
+                        resultado.DireccionIP);
+            }
+
+            return Json(new
+            {
+                direccionIP = resultado.DireccionIP,
+                direccionMac = resultado.DireccionMac,
+                nombre = resultado.Nombre,
+                tipoDireccionIP = clasificacionDireccion
+            });
         }
         catch (DllNotFoundException)
         {
