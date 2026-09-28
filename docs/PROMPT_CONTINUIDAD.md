@@ -323,18 +323,15 @@ La captura se abre en modo promiscuo para maximizar la visibilidad de las tramas
 
 ### Detección manual
 
-La interfaz de ProyectoRed ofrece una sección **Detección manual** con:
+La interfaz de ProyectoRed ofrece un único campo:
 
 - IP del dispositivo.
-- IP local de prueba.
 
-La **IP del dispositivo** permite hacer una consulta ARP puntual contra una única dirección conocida. Esto no es un escaneo de subred.
+La **IP del dispositivo** permite hacer una consulta ARP puntual contra una única dirección conocida.
 
-La **IP local de prueba** se utiliza como IP de origen de la consulta ARP cuando la interfaz de la PC todavía no tiene una IPv4.
+No se solicita una IP local de prueba. Si la PC tiene una IPv4 se usa automáticamente como origen; si no tiene IPv4, la sonda ARP puede utilizar 0.0.0.0 sin modificar la configuración de Windows.
 
-Ninguno de esos campos modifica automáticamente la configuración de red de Windows.
-
-Cuando no se conoce la IP del dispositivo, la aplicación continúa con LLDP/CDP y captura pasiva. Si el dispositivo permanece completamente silencioso, no existe una forma universal de descubrir su IPv4 sin conocer una dirección objetivo o realizar descubrimiento activo de red. ProyectoRed no convierte ese caso en un escaneo automático de la subred.
+Cuando no se conoce la IP del dispositivo, la aplicación utiliza la detección automática: LLDP, CDP, tráfico IPv4, ARP pasivo, sondeo ARP de la subred local y rangos de respaldo.
 
 La interfaz también diferencia el estado del enlace del resultado de identificación:
 
