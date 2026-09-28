@@ -271,18 +271,7 @@ La primera versión debe limitarse a:
 
 IP + MAC + Nombre
 
-No incorporar todavía:
-
-- escaneo completo de redes;
-- descubrimiento masivo de subredes;
-- detección de puertos;
-- sistema operativo;
-- SNMP;
-- inventario avanzado;
-- base de datos;
-- historial;
-- topología;
-- mapas.
+La detección automática puede realizar un sondeo ARP acotado a la interfaz seleccionada, además de LLDP/CDP y captura pasiva. No se incorporan detección de puertos, sistema operativo, SNMP, inventario avanzado, topología ni mapas.
 
 ## Clasificación básica de IPv4
 
@@ -405,7 +394,7 @@ La configuración sugerida toma como referencia la máscara IPv4 de la PC. La pu
 
 La publicación Windows y la captura con Npcap ya fueron verificadas.
 
-La siguiente etapa es validar la detección automática con dispositivos de IP fija en subredes típicas, con y sin puerta de enlace.
+La siguiente etapa es validar la detección automática con dispositivos de IP fija en subredes típicas, con y sin puerta de enlace, comprobando especialmente el caso en que Windows obtiene una IPv4 por DHCP y el equipo remoto mantiene una IP fija.
 
 La captura actual trabaja durante unos segundos y recopila, cuando existen:
 
