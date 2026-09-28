@@ -83,18 +83,10 @@ public class CapturadorPaquetesService
                     direccion.AddressFamily ==
                     AddressFamily.InterNetwork);
 
-        if (direccionIpLocal == null)
-        {
-            throw new InvalidOperationException(
-                $"La interfaz '{nombreInterfaz}' no tiene una dirección IPv4.");
-        }
 
-        if (puertaEnlace == null)
-        {
-            throw new InvalidOperationException(
-                $"La interfaz '{nombreInterfaz}' no tiene una puerta de enlace IPv4 configurada.");
-        }
-
+        // La IPv4 y la puerta de enlace son necesarias únicamente para
+        // realizar la consulta ARP dirigida al gateway. La captura
+        // pasiva puede funcionar sin ninguna de las dos.
         PhysicalAddress direccionMacLocal =
             interfazRed.GetPhysicalAddress();
 
@@ -266,42 +258,59 @@ public class CapturadorPaquetesService
 
         try
         {
-            // Primero comenzamos a escuchar y después enviamos una
-            // consulta ARP específica a la puerta de enlace.
+            // Comenzamos a escuchar antes de realizar cualquier
+            // consulta. Si tenemos IPv4 y puerta de enlace, hacemos
+            // también una consulta ARP dirigida para conservar el
+            // comportamiento que ya funcionaba con routers/modems.
             dispositivoSeleccionado.StartCapture();
 
-            ArpPacket solicitudArp =
-                new ArpPacket(
-                    ArpOperation.Request,
-                    direccionMacVacia,
-                    puertaEnlace,
-                    direccionMacLocal,
-                    direccionIpLocal);
-
-            EthernetPacket tramaArp =
-                new EthernetPacket(
-                    direccionMacLocal,
-                    direccionMacBroadcast,
-                    EthernetType.Arp);
-
-            tramaArp.PayloadPacket =
-                solicitudArp;
-
-            if (dispositivoSeleccionado is not IInjectionDevice dispositivoInyeccion)
+            if (direccionIpLocal != null &&
+                puertaEnlace != null)
             {
-                throw new InvalidOperationException(
-                    "El dispositivo de captura seleccionado no permite inyección de paquetes.");
+                ArpPacket solicitudArp =
+                    new ArpPacket(
+                        ArpOperation.Request,
+                        direccionMacVacia,
+                        puertaEnlace,
+                        direccionMacLocal,
+                        direccionIpLocal);
+
+                EthernetPacket tramaArp =
+                    new EthernetPacket(
+                        direccionMacLocal,
+                        direccionMacBroadcast,
+                        EthernetType.Arp);
+
+                tramaArp.PayloadPacket =
+                    solicitudArp;
+
+                if (dispositivoSeleccionado is not IInjectionDevice dispositivoInyeccion)
+                {
+                    throw new InvalidOperationException(
+                        "El dispositivo de captura seleccionado no permite inyección de paquetes.");
+                }
+
+                dispositivoInyeccion.SendPacket(tramaArp);
+
+                Console.WriteLine(
+                    $"Consulta ARP enviada para: {puertaEnlace}");
+            }
+            else
+            {
+                Console.WriteLine(
+                    "No hay IPv4 local o puerta de enlace. " +
+                    "Se realizará descubrimiento pasivo.");
             }
 
-            dispositivoInyeccion.SendPacket(tramaArp);
+            TimeSpan tiempoEspera =
+                direccionIpLocal != null &&
+                puertaEnlace != null
+                    ? TimeSpan.FromSeconds(3)
+                    : TimeSpan.FromSeconds(5);
 
-            Console.WriteLine(
-                $"Consulta ARP enviada para: {puertaEnlace}");
-
-            // Esperamos solamente la respuesta correspondiente.
             await EsperarResultadoAsync(
                 resultado,
-                TimeSpan.FromSeconds(3));
+                tiempoEspera);
         }
         finally
         {
@@ -317,8 +326,16 @@ public class CapturadorPaquetesService
 
         if (string.IsNullOrWhiteSpace(resultado.DireccionMac))
         {
-            Console.WriteLine(
-                $"No se recibió respuesta ARP para {puertaEnlace}.");
+            if (puertaEnlace != null)
+            {
+                Console.WriteLine(
+                    $"No se recibió una respuesta ARP para {puertaEnlace}.");
+            }
+            else
+            {
+                Console.WriteLine(
+                    "No se detectó ningún dispositivo durante la captura pasiva.");
+            }
         }
         else
         {
