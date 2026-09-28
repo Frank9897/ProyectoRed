@@ -13,9 +13,6 @@ document.addEventListener("DOMContentLoaded", function () {
     const direccionIpObjetivo =
         document.getElementById("direccionIpObjetivo");
 
-    const direccionIpLocalManual =
-        document.getElementById("direccionIpLocalManual");
-
     const resultadoDeteccion =
         document.getElementById("resultadoDeteccion");
 
@@ -33,6 +30,9 @@ document.addEventListener("DOMContentLoaded", function () {
 
     const resultadoNombre =
         document.getElementById("resultadoNombre");
+
+    const resultadoMetodo =
+        document.getElementById("resultadoMetodo");
 
     const btnAbrirInterfaz =
         document.getElementById("btnAbrirInterfaz");
@@ -199,12 +199,6 @@ document.addEventListener("DOMContentLoaded", function () {
                     direccionIpObjetivo.value.trim());
             }
 
-            if (direccionIpLocalManual.value.trim()) {
-                parametros.set(
-                    "direccionIPLocalManual",
-                    direccionIpLocalManual.value.trim());
-            }
-
             const respuesta = await fetch(
                 "/Home/Descubrir?" +
                 parametros.toString()
@@ -231,6 +225,9 @@ document.addEventListener("DOMContentLoaded", function () {
             const nombreDetectado =
                 datos.nombre || "";
 
+            const metodoDetectado =
+                datos.metodoDeteccion || "";
+
             const tipoDireccionDetectada =
                 datos.tipoDireccionIP || "";
 
@@ -250,6 +247,9 @@ document.addEventListener("DOMContentLoaded", function () {
 
             resultadoNombre.textContent =
                 nombreDetectado || "No disponible";
+
+            resultadoMetodo.textContent =
+                metodoDetectado || "Búsqueda automática";
 
             mensajeAcceso.classList.add("d-none");
             configuracionManual.classList.add("d-none");
