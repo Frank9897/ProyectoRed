@@ -2,6 +2,7 @@ using PacketDotNet;
 using PacketDotNet.Lldp;
 using ProyectoRed.Web.Models;
 using SharpPcap;
+using System.Linq;
 using System.Net;
 using System.Net.NetworkInformation;
 using System.Net.Sockets;
@@ -10,6 +11,14 @@ namespace ProyectoRed.Web.Services;
 
 public class CapturadorPaquetesService
 {
+    private readonly HistorialDispositivosService _historialDispositivosService;
+
+    public CapturadorPaquetesService(
+        HistorialDispositivosService historialDispositivosService)
+    {
+        _historialDispositivosService = historialDispositivosService;
+    }
+
     public async Task<DispositivoDetectado> CapturarAsync(
         string nombreInterfaz)
     {
@@ -115,6 +124,33 @@ public class CapturadorPaquetesService
                 return;
             }
 
+            // CDP (Cisco Discovery Protocol) viaja encapsulado en
+            // 802.3 LLC/SNAP, no en Ethernet II, así que PacketDotNet
+            // no lo reconoce como EthernetPacket estándar. Lo
+            // detectamos e interpretamos manualmente antes de
+            // intentar el parseo normal.
+            string nombreCdp =
+                IntentarExtraerNombreCdp(
+                    capturaBruta.Data,
+                    out string macCdp);
+
+            if (nombreCdp != null)
+            {
+                nombresLldpPorMac[macCdp] =
+                    nombreCdp;
+
+                if (string.Equals(
+                        macCdp,
+                        resultado.DireccionMac,
+                        StringComparison.OrdinalIgnoreCase))
+                {
+                    resultado.Nombre =
+                        nombreCdp;
+                }
+
+                return;
+            }
+
             Packet paquete =
                 Packet.ParsePacket(
                     capturaBruta.LinkLayerType,
@@ -175,10 +211,22 @@ public class CapturadorPaquetesService
                 return;
             }
 
-            // Aceptamos únicamente una respuesta ARP para la IP de la
-            // puerta de enlace que acabamos de consultar.
-            if (arp.Operation != ArpOperation.Response ||
-                !arp.SenderProtocolAddress.Equals(puertaEnlace))
+            // Aceptamos cualquier respuesta ARP que llegue por este
+            // cable: puede ser del gateway (si respondió a nuestra
+            // consulta dirigida) o de cualquier otro dispositivo
+            // conectado directamente (switch, PC, etc.) que haya
+            // emitido ARP de forma espontánea (gratuitous ARP,
+            // resolución hacia otro host, etc.). Esto es lo que
+            // permite detectar el switch de piso aunque no sea
+            // la puerta de enlace de la red.
+            if (arp.Operation != ArpOperation.Response)
+            {
+                return;
+            }
+
+            // Ya resolvimos un dispositivo en esta captura: no lo
+            // pisamos con una respuesta posterior de otra IP.
+            if (!string.IsNullOrWhiteSpace(resultado.DireccionMac))
             {
                 return;
             }
@@ -279,9 +327,103 @@ public class CapturadorPaquetesService
                 $"IP: {resultado.DireccionIP} | " +
                 $"MAC: {resultado.DireccionMac} | " +
                 $"Nombre: {resultado.Nombre}");
+
+            await _historialDispositivosService.RegistrarAsync(
+                new RegistroDispositivo
+                {
+                    DireccionIP = resultado.DireccionIP,
+                    DireccionMac = resultado.DireccionMac,
+                    Nombre = resultado.Nombre,
+                    NombreInterfaz = nombreInterfaz,
+                    Origen = "ARP",
+                    FechaDeteccion = DateTime.Now
+                });
         }
 
         return resultado;
+    }
+
+    /// <summary>
+    /// Busca una trama CDP dentro de los bytes crudos del frame
+    /// (LLC/SNAP con OUI Cisco 00-00-0C y PID 0x2000) y, si la
+    /// encuentra, extrae el TLV Device-ID (tipo 0x0001). Devuelve
+    /// null si el frame no es CDP.
+    /// </summary>
+    private string IntentarExtraerNombreCdp(
+        byte[] datos,
+        out string macOrigen)
+    {
+        macOrigen = null;
+
+        // Mínimo: 6 (dst) + 6 (src) + 2 (len) + 3 (LLC) + 5 (SNAP) + 4 (CDP header)
+        const int longitudMinima = 26;
+
+        if (datos == null || datos.Length < longitudMinima)
+        {
+            return null;
+        }
+
+        // LLC: DSAP=0xAA SSAP=0xAA Control=0x03, arranca en el byte 14
+        // (después de las dos MAC y el campo "longitud" de 802.3).
+        if (datos[14] != 0xAA ||
+            datos[15] != 0xAA ||
+            datos[16] != 0x03)
+        {
+            return null;
+        }
+
+        // SNAP: OUI Cisco = 00-00-0C, PID CDP = 0x2000.
+        if (datos[17] != 0x00 ||
+            datos[18] != 0x00 ||
+            datos[19] != 0x0C ||
+            datos[20] != 0x20 ||
+            datos[21] != 0x00)
+        {
+            return null;
+        }
+
+        // Cabecera CDP: version(1) ttl(1) checksum(2). Los TLV
+        // arrancan en el byte 26.
+        int posicion = 26;
+
+        while (posicion + 4 <= datos.Length)
+        {
+            int tipoTlv =
+                (datos[posicion] << 8) | datos[posicion + 1];
+
+            int longitudTlv =
+                (datos[posicion + 2] << 8) | datos[posicion + 3];
+
+            if (longitudTlv < 4 ||
+                posicion + longitudTlv > datos.Length)
+            {
+                break;
+            }
+
+            // Tipo 0x0001 = Device-ID.
+            if (tipoTlv == 0x0001)
+            {
+                int longitudValor =
+                    longitudTlv - 4;
+
+                string deviceId =
+                    System.Text.Encoding.ASCII.GetString(
+                        datos,
+                        posicion + 4,
+                        longitudValor);
+
+                macOrigen =
+                    FormatearMac(
+                        new PhysicalAddress(
+                            datos.Skip(6).Take(6).ToArray()));
+
+                return deviceId;
+            }
+
+            posicion += longitudTlv;
+        }
+
+        return null;
     }
 
     private async Task EsperarResultadoAsync(

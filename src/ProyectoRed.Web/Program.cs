@@ -13,6 +13,7 @@ builder.Services.AddScoped<InterfazRedService>();
 builder.Services.AddScoped<CapturadorPaquetesService>();
 builder.Services.AddScoped<AccesoDispositivoService>();
 builder.Services.AddScoped<ClasificadorDireccionService>();
+builder.Services.AddSingleton<HistorialDispositivosService>();
 
 var app = builder.Build();
 

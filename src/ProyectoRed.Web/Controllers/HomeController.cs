@@ -11,17 +11,20 @@ public class HomeController : Controller
     private readonly CapturadorPaquetesService _capturadorPaquetesService;
     private readonly AccesoDispositivoService _accesoDispositivoService;
     private readonly ClasificadorDireccionService _clasificadorDireccionService;
+    private readonly HistorialDispositivosService _historialDispositivosService;
 
     public HomeController(
         InterfazRedService interfazRedService,
         CapturadorPaquetesService capturadorPaquetesService,
         AccesoDispositivoService accesoDispositivoService,
-        ClasificadorDireccionService clasificadorDireccionService)
+        ClasificadorDireccionService clasificadorDireccionService,
+        HistorialDispositivosService historialDispositivosService)
     {
         _capturadorPaquetesService = capturadorPaquetesService;
         _accesoDispositivoService = accesoDispositivoService;
         _clasificadorDireccionService = clasificadorDireccionService;
         _interfazRedService = interfazRedService;
+        _historialDispositivosService = historialDispositivosService;
     }
 
     public IActionResult Index()
@@ -119,6 +122,15 @@ public class HomeController : Controller
     public async Task<IActionResult> PruebaCaptura(string nombreInterfaz)
     {
         return await Descubrir(nombreInterfaz);
+    }
+
+    [HttpGet]
+    public async Task<IActionResult> Historial()
+    {
+        List<RegistroDispositivo> historial =
+            await _historialDispositivosService.ObtenerHistorialAsync();
+
+        return Json(historial);
     }
 
     public IActionResult Privacy()

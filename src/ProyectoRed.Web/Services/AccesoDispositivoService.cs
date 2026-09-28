@@ -119,7 +119,8 @@ public class AccesoDispositivoService
         resultado.ConfiguracionManual =
             CrearConfiguracionManual(
                 direccionIP,
-                mascaraRed);
+                mascaraRed,
+                direccionIPLocal);
 
         return resultado;
     }
@@ -144,10 +145,14 @@ public class AccesoDispositivoService
 
     private ConfiguracionManualRed CrearConfiguracionManual(
         IPAddress direccionIPDispositivo,
-        IPAddress mascaraRed)
+        IPAddress mascaraRed,
+        IPAddress direccionIPLocal)
     {
         uint dispositivo =
             ConvertirIPv4(direccionIPDispositivo);
+
+        uint local =
+            ConvertirIPv4(direccionIPLocal);
 
         uint mascara =
             ConvertirIPv4(mascaraRed);
@@ -169,7 +174,8 @@ public class AccesoDispositivoService
         {
             if (candidato <= red ||
                 candidato >= broadcast ||
-                candidato == dispositivo)
+                candidato == dispositivo ||
+                candidato == local)
             {
                 continue;
             }
