@@ -20,8 +20,7 @@ public class CapturadorPaquetesService
 
     public async Task<DispositivoDetectado> CapturarAsync(
         string nombreInterfaz,
-        string direccionIPObjetivo = null,
-        string direccionIPLocalManual = null)
+        string direccionIPObjetivo = null)
     {
         CaptureDeviceList dispositivos =
             CaptureDeviceList.Instance;
@@ -77,20 +76,6 @@ public class CapturadorPaquetesService
         {
             throw new InvalidOperationException(
                 "La IP del dispositivo indicada manualmente no es una IPv4 de destino válida.");
-        }
-
-        IPAddress direccionIpLocalManualParseada = null;
-
-        if (!string.IsNullOrWhiteSpace(direccionIPLocalManual))
-        {
-            if (!IPAddress.TryParse(
-                    direccionIPLocalManual,
-                    out direccionIpLocalManualParseada) ||
-                direccionIpLocalManualParseada.AddressFamily != AddressFamily.InterNetwork)
-            {
-                throw new InvalidOperationException(
-                    "La IP local manual indicada no es una IPv4 válida.");
-            }
         }
 
         IPInterfaceProperties propiedadesIp =
@@ -385,7 +370,6 @@ public class CapturadorPaquetesService
 
             IPAddress direccionOrigenArp =
                 direccionIpLocal ??
-                direccionIpLocalManualParseada ??
                 IPAddress.Any;
 
             if (dispositivoSeleccionado is not IInjectionDevice dispositivoInyeccion)
@@ -473,7 +457,7 @@ public class CapturadorPaquetesService
                     busquedaManual
                         ? 3
                         : 5));
-
+        }
         finally
         {
             dispositivoSeleccionado.StopCapture();
@@ -1045,7 +1029,8 @@ public class CapturadorPaquetesService
             objetivos,
             vistos,
             direccionIpLocal,
-            "169.254.0.0");
+            "169.254.0.0",
+            16);
 
         return objetivos;
     }
@@ -1054,7 +1039,8 @@ public class CapturadorPaquetesService
         List<IPAddress> objetivos,
         HashSet<uint> vistos,
         IPAddress direccionIpLocal,
-        string direccionRed)
+        string direccionRed,
+        int prefijo = 24)
     {
         IPAddress red =
             IPAddress.Parse(direccionRed);
@@ -1062,8 +1048,15 @@ public class CapturadorPaquetesService
         uint baseRed =
             ConvertirIPv4(red);
 
+        uint mascara =
+            prefijo == 16
+                ? 0xFFFF0000U
+                : 0xFFFFFF00U;
+
+        baseRed &= mascara;
+
         uint broadcast =
-            baseRed | 0x000000FFU;
+            baseRed | ~mascara;
 
         // Primero .1 y .254 para encontrar rápidamente equipos con
         // direcciones por defecto habituales.
@@ -1141,7 +1134,7 @@ public class CapturadorPaquetesService
             direccion.GetAddressBytes()[0];
 
         if (primerOcteto >= 224 &&
-            primerOcteto <= 239)
+            primerOcteto <= 255)
         {
             return false;
         }
