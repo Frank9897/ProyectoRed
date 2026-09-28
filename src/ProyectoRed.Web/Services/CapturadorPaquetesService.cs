@@ -192,6 +192,27 @@ public class CapturadorPaquetesService
                     break;
                 }
 
+                // Algunos dispositivos anuncian su IP de gestión
+                // mediante el Management Address TLV de LLDP.
+                // Esto permite identificar un switch aunque no exista
+                // una puerta de enlace configurada en la PC.
+                if (string.IsNullOrWhiteSpace(resultado.DireccionMac))
+                {
+                    string direccionGestionLldp =
+                        IntentarExtraerDireccionGestionLldp(
+                            capturaBruta.Data);
+
+                    if (!string.IsNullOrWhiteSpace(
+                            direccionGestionLldp))
+                    {
+                        resultado.DireccionIP =
+                            direccionGestionLldp;
+
+                        resultado.DireccionMac =
+                            macLldp;
+                    }
+                }
+
                 return;
             }
 
@@ -358,6 +379,106 @@ public class CapturadorPaquetesService
         }
 
         return resultado;
+    }
+
+    private string IntentarExtraerDireccionGestionLldp(
+        byte[] datos)
+    {
+        if (datos == null ||
+            datos.Length < 18)
+        {
+            return null;
+        }
+
+        int desplazamientoEthernet = 14;
+
+        ushort tipoEthernet =
+            (ushort)((datos[12] << 8) | datos[13]);
+
+        // VLAN 802.1Q: el EtherType se encuentra cuatro bytes
+        // después del encabezado Ethernet original.
+        if (tipoEthernet == 0x8100 ||
+            tipoEthernet == 0x88A8)
+        {
+            if (datos.Length < 22)
+            {
+                return null;
+            }
+
+            tipoEthernet =
+                (ushort)((datos[16] << 8) | datos[17]);
+
+            desplazamientoEthernet = 18;
+        }
+
+        if (tipoEthernet != 0x88CC)
+        {
+            return null;
+        }
+
+        int posicion =
+            desplazamientoEthernet;
+
+        while (posicion + 2 <= datos.Length)
+        {
+            ushort encabezado =
+                (ushort)((datos[posicion] << 8) |
+                         datos[posicion + 1]);
+
+            int tipo =
+                encabezado >> 9;
+
+            int longitud =
+                encabezado & 0x01FF;
+
+            posicion += 2;
+
+            if (tipo == 0)
+            {
+                return null;
+            }
+
+            if (posicion + longitud > datos.Length)
+            {
+                return null;
+            }
+
+            if (tipo == 8)
+            {
+                if (longitud < 1)
+                {
+                    return null;
+                }
+
+                int longitudDireccion =
+                    datos[posicion];
+
+                if (longitudDireccion != 5 ||
+                    longitud < longitudDireccion + 7)
+                {
+                    return null;
+                }
+
+                // Subtipo 1 = IPv4.
+                if (datos[posicion + 1] != 1)
+                {
+                    return null;
+                }
+
+                return new IPAddress(
+                    new byte[]
+                    {
+                        datos[posicion + 2],
+                        datos[posicion + 3],
+                        datos[posicion + 4],
+                        datos[posicion + 5]
+                    }).ToString();
+            }
+
+            posicion += longitud;
+        }
+
+        return null;
     }
 
     /// <summary>
