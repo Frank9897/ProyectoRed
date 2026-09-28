@@ -22,7 +22,7 @@ La primera versión debe ser sencilla. Su objetivo es identificar, cuando sea po
 - MAC.
 - Nombre del equipo.
 
-No se busca inicialmente escanear una red completa, descubrir todos los dispositivos de una subred ni asumir una máscara determinada.
+El escenario de uso sigue siendo una conexión Ethernet local. La detección automática utiliza la máscara de la interfaz seleccionada para realizar un sondeo ARP de la subred cuando es posible, además de LLDP/CDP, tráfico IPv4/ARP y rangos de respaldo. No se realiza detección de puertos ni inventario de servicios.
 
 ## Funcionamiento en campo
 
@@ -202,6 +202,12 @@ Ya se encuentran implementados:
 - Análisis Ethernet mediante PacketDotNet.
 - Detección de paquetes LLDP.
 - Lectura del System Name de LLDP cuando está presente.
+- Lectura del Management Address TLV IPv4 de LLDP.
+- Detección de CDP.
+- Lectura de Device-ID y Address TLV IPv4 de CDP.
+- Sondeo ARP automático de la subred local y de rangos de respaldo.
+- Asociación de respuestas ARP con las direcciones que fueron sondeadas.
+- Detección de IPv4 desde tráfico dirigido a la PC.
 - Correspondencia entre la interfaz de .NET y el dispositivo de captura de SharpPcap mediante GUID en Windows.
 - Captura pasiva de MAC e IPv4 del dispositivo remoto cuando aparece tráfico Ethernet/ARP/IPv4.
 - Endpoint de descubrimiento desde HomeController.
@@ -309,19 +315,22 @@ El objetivo es informar al técnico sin convertir la clasificación en un dato p
 
 ## Descubrimiento sin puerta de enlace
 
-La puerta de enlace IPv4 es opcional para el capturador.
+La puerta de enlace IPv4 es opcional para el capturador. Ya no es la condición que determina si la detección automática puede empezar.
 
-Con IPv4 + gateway:
-- se mantiene la consulta ARP dirigida al gateway;
-- se conserva el comportamiento que ya funcionaba para routers/modems.
+Con IPv4 + máscara:
+- se sondea primero la puerta de enlace si existe;
+- se prueban las direcciones utilizables de la subred local;
+- la búsqueda se detiene al obtener una IPv4.
 
-Sin gateway o sin IPv4 local:
-- la captura se inicia igualmente;
-- se espera una ventana limitada;
-- se priorizan LLDP y CDP como protocolos de descubrimiento del vecino directamente conectado;
-- LLDP puede aportar la IP de gestión mediante Management Address TLV.
+Sin gateway pero con IPv4:
+- el comportamiento es el mismo; el gateway ya no es necesario.
 
-Para el escenario de conexión directa, la captura no necesita modo promiscuo. Esto evita ampliar innecesariamente la captura a tráfico unicast que no está destinado a la PC.
+Sin IPv4 local:
+- LLDP/CDP y captura pasiva siguen disponibles;
+- las sondas ARP manuales y automáticas utilizan 0.0.0.0 como dirección de origen cuando corresponde;
+- también se buscan rangos habituales, incluyendo 169.254.0.0/16.
+
+La captura se abre en modo promiscuo para maximizar la visibilidad de las tramas Ethernet útiles para LLDP/CDP y diagnóstico de capa 2. La asociación final de una IP con el dispositivo sigue estando restringida por MAC, IP objetivo y/o destino de la trama.
 
 ### Detección manual
 
@@ -396,7 +405,7 @@ La configuración sugerida toma como referencia la máscara IPv4 de la PC. La pu
 
 La publicación Windows y la captura con Npcap ya fueron verificadas.
 
-La siguiente etapa es probar la detección pasiva con un dispositivo conectado directamente por UTP.
+La siguiente etapa es validar la detección automática con dispositivos de IP fija en subredes típicas, con y sin puerta de enlace.
 
 La captura actual trabaja durante unos segundos y recopila, cuando existen:
 
@@ -406,7 +415,7 @@ La captura actual trabaja durante unos segundos y recopila, cuando existen:
 
 No se debe tomar el primer paquete ARP de una red compartida como identificación automática del dispositivo.
 
-La estrategia actual no realiza escaneo completo de subred ni presupone una máscara.
+La estrategia automática usa la máscara real de la interfaz cuando existe. No asume una máscara /24 por defecto.
 
 ## Forma de desarrollo
 
