@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Net.NetworkInformation;
 using Microsoft.AspNetCore.Mvc;
 using ProyectoRed.Web.Models;
 using ProyectoRed.Web.Services;
@@ -35,7 +36,10 @@ public class HomeController : Controller
         return View(interfacesList);
     }
 
-    public async Task<IActionResult> Descubrir(string nombreInterfaz)
+    public async Task<IActionResult> Descubrir(
+        string nombreInterfaz,
+        string direccionIPObjetivo,
+        string direccionIPLocalManual)
     {
         if (string.IsNullOrWhiteSpace(nombreInterfaz))
         {
@@ -47,9 +51,24 @@ public class HomeController : Controller
 
         try
         {
+            NetworkInterface interfazRed =
+                NetworkInterface.GetAllNetworkInterfaces()
+                    .FirstOrDefault(interfaz =>
+                        string.Equals(
+                            interfaz.Name,
+                            nombreInterfaz,
+                            StringComparison.OrdinalIgnoreCase));
+
+            bool enlaceActivo =
+                interfazRed != null &&
+                interfazRed.OperationalStatus ==
+                OperationalStatus.Up;
+
             DispositivoDetectado resultado =
                 await _capturadorPaquetesService.CapturarAsync(
-                    nombreInterfaz);
+                    nombreInterfaz,
+                    direccionIPObjetivo,
+                    direccionIPLocalManual);
 
             string clasificacionDireccion = string.Empty;
 
@@ -60,12 +79,41 @@ public class HomeController : Controller
                         resultado.DireccionIP);
             }
 
+            string mensajeEstado = string.Empty;
+
+            if (string.IsNullOrWhiteSpace(resultado.DireccionMac))
+            {
+                if (!enlaceActivo)
+                {
+                    mensajeEstado =
+                        "La interfaz Ethernet no tiene un enlace activo.";
+                }
+                else if (!string.IsNullOrWhiteSpace(direccionIPObjetivo))
+                {
+                    mensajeEstado =
+                        $"El enlace UTP está activo, pero no hubo respuesta ARP de {direccionIPObjetivo}.";
+                }
+                else
+                {
+                    mensajeEstado =
+                        "El enlace UTP está activo, pero el dispositivo no anunció información identificable durante la captura. " +
+                        "Pruebe la detección manual indicando la IP del dispositivo.";
+                }
+            }
+            else
+            {
+                mensajeEstado =
+                    "Se obtuvo información del dispositivo.";
+            }
+
             return Json(new
             {
+                enlaceActivo,
                 direccionIP = resultado.DireccionIP,
                 direccionMac = resultado.DireccionMac,
                 nombre = resultado.Nombre,
-                tipoDireccionIP = clasificacionDireccion
+                tipoDireccionIP = clasificacionDireccion,
+                mensajeEstado
             });
         }
         catch (DllNotFoundException)
@@ -121,7 +169,10 @@ public class HomeController : Controller
     // Se conserva esta ruta para las pruebas directas que veníamos utilizando.
     public async Task<IActionResult> PruebaCaptura(string nombreInterfaz)
     {
-        return await Descubrir(nombreInterfaz);
+        return await Descubrir(
+            nombreInterfaz,
+            string.Empty,
+            string.Empty);
     }
 
     [HttpGet]
