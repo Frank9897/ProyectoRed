@@ -103,7 +103,7 @@ document.addEventListener("DOMContentLoaded", function () {
             }
             else {
                 ventanaInterfaz.close();
-            else {
+
                 mensajeAcceso.className =
                     "alert alert-warning mt-3 mb-0";
 
