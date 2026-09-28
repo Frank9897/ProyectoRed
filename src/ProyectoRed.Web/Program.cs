@@ -12,6 +12,7 @@ builder.Services.AddControllersWithViews();
 builder.Services.AddScoped<InterfazRedService>();
 builder.Services.AddScoped<CapturadorPaquetesService>();
 builder.Services.AddScoped<AccesoDispositivoService>();
+builder.Services.AddScoped<ClasificadorDireccionService>();
 
 var app = builder.Build();
 
