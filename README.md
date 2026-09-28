@@ -178,6 +178,7 @@ Ya se encuentran implementados:
 - Apertura automática del navegador en Windows.
 - Modelo InterfazRed con nombre, IPv4, MAC y tipo.
 - Servicio InterfazRedService.
+- Servicio AccesoDispositivoService para validar el acceso a la interfaz web del dispositivo.
 - Enumeración de interfaces mediante NetworkInterface.GetAllNetworkInterfaces().
 - Filtro por OperationalStatus.Up.
 - Filtro por NetworkInterfaceType.Ethernet.
@@ -330,9 +331,43 @@ ProyectoRed.Web.exe
 
 La instalación de ProyectoRed requiere permisos de administrador porque se instala en Program Files. La ejecución posterior no requiere instalar .NET por separado.
 
+## Acceso a la interfaz del dispositivo
+
+Después de detectar un dispositivo con una IPv4, la interfaz muestra el botón:
+
+~~~text
+Abrir interfaz del dispositivo
+~~~
+
+Al pulsarlo, el backend analiza la configuración IPv4 actual de la interfaz seleccionada.
+
+Se compara:
+
+~~~text
+(IP de la PC AND máscara)
+==
+(IP del dispositivo AND máscara)
+~~~
+
+Si ambas direcciones pertenecen a la misma red, ProyectoRed abre:
+
+~~~text
+http://IP-DEL-DISPOSITIVO
+~~~
+
+en una nueva pestaña del navegador.
+
+Si están en redes diferentes, ProyectoRed no cambia automáticamente la configuración de Windows. Muestra la IP y la máscara actuales, informa de la situación y, cuando existe una dirección posible, propone una configuración temporal para acceder a un dispositivo con IP fija.
+
+La propuesta deja la puerta de enlace vacía porque el objetivo de esta configuración temporal es acceder al dispositivo de forma local.
+
+También se consulta si la interfaz utiliza DHCP. Si está en DHCP, el mensaje indica que se debe comprobar que exista un servidor DHCP que entregue una dirección de la misma red. Si está configurada manualmente, se informa de que puede ser necesario cambiar temporalmente la configuración IPv4.
+
+Esta funcionalidad no realiza modificaciones automáticas en la configuración de red de Windows.
+
 ## Próximo paso
 
-Con la parte de despliegue preparada, el siguiente trabajo sigue siendo comprobar el descubrimiento con un dispositivo conectado directamente por UTP y, a partir de los resultados, mejorar la forma de presentar IP/MAC/Nombre sin convertir ProyectoRed en un scanner de subred.
+Con la parte de despliegue y acceso a la interfaz preparada, el siguiente trabajo sigue siendo comprobar el descubrimiento con un dispositivo conectado directamente por UTP y, a partir de los resultados, mejorar la forma de presentar IP/MAC/Nombre sin convertir ProyectoRed en un scanner de subred.
 
 ## Forma de desarrollo
 
