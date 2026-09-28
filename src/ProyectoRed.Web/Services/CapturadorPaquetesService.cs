@@ -396,9 +396,7 @@ public class CapturadorPaquetesService
                 // de un solo salto: no puede tratarse de otro equipo
                 // más allá en la red, porque LLDP/CDP nunca se reenvían.
                 await EsperarCondicionAsync(
-                    () => vecinoDirectoDetectado ||
-                          !string.IsNullOrWhiteSpace(
-                              resultado.DireccionIP),
+                    () => vecinoDirectoDetectado,
                     TimeSpan.FromSeconds(6));
 
                 if (vecinoDirectoDetectado)
@@ -448,7 +446,8 @@ public class CapturadorPaquetesService
             // para que la interfaz pueda avisarle al técnico que es una
             // IP alcanzable en la red, no necesariamente el dispositivo
             // conectado directamente al cable.
-            if (string.IsNullOrWhiteSpace(resultado.DireccionIP))
+            if (!vecinoDirectoDetectado ||
+                string.IsNullOrWhiteSpace(resultado.DireccionIP))
             {
                 Console.WriteLine(
                     busquedaManual
@@ -488,7 +487,7 @@ public class CapturadorPaquetesService
             else
             {
                 Console.WriteLine(
-                    "IP ya resuelta por LLDP/CDP; se omite el escaneo ARP.");
+                    "IP resuelta por LLDP/CDP; se omite el escaneo ARP.");
             }
 
             if (objetivosArpActivos.Count == 0)
