@@ -9,12 +9,15 @@ public class HomeController : Controller
 {
     private readonly InterfazRedService _interfazRedService;
     private readonly CapturadorPaquetesService _capturadorPaquetesService;
+    private readonly AccesoDispositivoService _accesoDispositivoService;
 
     public HomeController(
         InterfazRedService interfazRedService,
-        CapturadorPaquetesService capturadorPaquetesService)
+        CapturadorPaquetesService capturadorPaquetesService,
+        AccesoDispositivoService accesoDispositivoService)
     {
         _capturadorPaquetesService = capturadorPaquetesService;
+        _accesoDispositivoService = accesoDispositivoService;
         _interfazRedService = interfazRedService;
     }
 
@@ -51,6 +54,39 @@ public class HomeController : Controller
                 mensaje =
                     "No se encontró Npcap. Instale Npcap para habilitar la captura Ethernet."
             });
+        }
+        catch (InvalidOperationException excepcion)
+        {
+            return BadRequest(new
+            {
+                mensaje = excepcion.Message
+            });
+        }
+    }
+
+    [HttpGet]
+    public IActionResult AccesoDispositivo(
+        string nombreInterfaz,
+        string direccionIP)
+    {
+        if (string.IsNullOrWhiteSpace(nombreInterfaz) ||
+            string.IsNullOrWhiteSpace(direccionIP))
+        {
+            return BadRequest(new
+            {
+                mensaje =
+                    "Se necesita la interfaz de red y la IP del dispositivo."
+            });
+        }
+
+        try
+        {
+            EstadoAccesoDispositivo resultado =
+                _accesoDispositivoService.Evaluar(
+                    nombreInterfaz,
+                    direccionIP);
+
+            return Json(resultado);
         }
         catch (InvalidOperationException excepcion)
         {
