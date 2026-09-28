@@ -401,6 +401,26 @@ Ejemplos:
 
 Esta clasificación sirve como información auxiliar para el técnico y no cambia el objetivo principal del proyecto: descubrir la IPv4 del dispositivo conectado por UTP y facilitar el acceso a su interfaz cuando sea posible.
 
+## Descubrimiento sin puerta de enlace
+
+La puerta de enlace IPv4 ya no es un requisito para ejecutar la detección.
+
+Cuando la interfaz Ethernet tiene una IPv4 y una puerta de enlace, ProyectoRed mantiene el mecanismo de consulta ARP dirigida al gateway que ya estaba funcionando.
+
+Cuando no existe puerta de enlace, o la interfaz todavía no tiene una IPv4, ProyectoRed inicia igualmente la captura y realiza un descubrimiento pasivo durante una ventana limitada.
+
+En esa captura puede obtener información mediante:
+
+~~~text
+ARP
+LLDP
+CDP
+~~~
+
+Además, cuando un anuncio LLDP contiene un **Management Address TLV** con una IPv4, esa dirección puede asociarse a la MAC de origen del anuncio. Esto permite identificar dispositivos administrables que anuncian su dirección de gestión aunque la PC no tenga una puerta de enlace configurada.
+
+La captura sin puerta de enlace no garantiza encontrar cualquier dispositivo silencioso. Sin una dirección conocida o un protocolo de descubrimiento emitido por el dispositivo, no existe una forma universal de identificar su IP sin realizar un descubrimiento activo de la red. ProyectoRed no convierte esta situación en un escaneo automático de toda la subred.
+
 ## Próximo paso
 
 Con la parte de despliegue y acceso a la interfaz preparada, el siguiente trabajo sigue siendo comprobar el descubrimiento con un dispositivo conectado directamente por UTP y, a partir de los resultados, mejorar la forma de presentar IP/MAC/Nombre sin convertir ProyectoRed en un scanner de subred.
