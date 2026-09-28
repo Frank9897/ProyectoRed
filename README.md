@@ -10,7 +10,9 @@ Su objetivo inicial es permitir que un técnico conecte físicamente una PC o la
 - Dirección MAC.
 - Nombre del equipo.
 
-El proyecto **no busca inicialmente escanear una red completa** ni descubrir todos los dispositivos de una subred. El escenario principal es una conexión física local entre la computadora utilizada por el técnico y el dispositivo que se desea identificar.
+El escenario principal sigue siendo una conexión física local entre la computadora utilizada por el técnico y el dispositivo que se desea identificar.
+
+La detección automática ahora utiliza un sondeo ARP activo y acotado a la interfaz seleccionada. Primero intenta direcciones prioritarias de la red local y, si no encuentra respuesta, amplía la búsqueda a rangos privados habituales y a IPv4 Link-Local. No se realiza descubrimiento de puertos ni se enumeran servicios del dispositivo.
 
 ### Escenario de uso
 
@@ -214,9 +216,17 @@ La captura ya se utiliza para obtener información del dispositivo remoto en una
 - No se mezclan una MAC de un paquete con una IP de otro dispositivo.
 - La captura está limitada a unos segundos para evitar loops y no ejecutarse indefinidamente.
 
-Esta estrategia es **pasiva** y está pensada para el escenario de conexión directa. No realiza todavía un escaneo de toda la subred.
+La estrategia combina descubrimiento pasivo y activo:
 
-La ausencia de tráfico significa que no siempre será posible obtener toda la información: un equipo silencioso puede no proporcionar una IPv4 o un nombre durante la ventana de captura.
+- LLDP/CDP para identificar al vecino directamente conectado.
+- Tráfico IPv4/ARP observado durante la captura.
+- Sondeo ARP automático de la red IPv4 local cuando existe una IPv4 y máscara.
+- Direcciones administrativas habituales cuando la PC está en otra red o todavía no tiene IPv4.
+- Rango IPv4 Link-Local 169.254.0.0/16 como búsqueda adicional.
+
+Cuando existe una IPv4 local, la máscara de la interfaz determina qué subred se puede sondear automáticamente. Para redes hasta /16 el sondeo puede recorrer los hosts utilizables. Redes mucho más grandes no se recorren completas para evitar una operación excesiva.
+
+Una conexión Ethernet en estado UP confirma el enlace físico, pero por sí sola no proporciona la IPv4 del equipo remoto. Por eso la versión actual ya no depende únicamente de esperar tráfico espontáneo.
 
 ## Alcance de la primera versión
 
@@ -424,24 +434,17 @@ Cuando no aparece LLDP/CDP, ProyectoRed puede obtener una respuesta ARP pasiva s
 
 ### Detección manual
 
-La interfaz incluye una sección **Detección manual** con:
+La interfaz permite introducir:
 
 ~~~text
 IP del dispositivo
-IP local de prueba
 ~~~
 
-La primera dirección es la IP concreta que se desea consultar.
+Cuando se completa, ProyectoRed realiza una **única consulta ARP dirigida a esa IP**.
 
-Cuando se completa, ProyectoRed envía una **única consulta ARP dirigida a esa IP**. No realiza un escaneo de la subred ni prueba automáticamente miles de direcciones.
+Ya no se solicita una “IP local de prueba”. Si la PC tiene una IPv4, se utiliza esa dirección como origen del ARP. Si no tiene IPv4, la sonda se envía con origen 0.0.0.0, sin modificar la configuración de Windows.
 
-La IP local de prueba es opcional. Solo se utiliza como dirección de origen de la consulta ARP cuando la interfaz de la PC no tiene una IPv4 configurada.
-
-Esta configuración manual **no modifica la configuración de Windows**.
-
-Por lo tanto, si el técnico conoce la IP fija/default del dispositivo, puede hacer una consulta puntual incluso cuando la PC todavía no tiene IPv4 o puerta de enlace.
-
-La captura sin una IP objetivo conocida no puede garantizar la identificación de un dispositivo completamente silencioso. El enlace físico puede estar activo aunque el equipo remoto no anuncie LLDP/CDP ni genere tráfico ARP durante la ventana de captura.
+La detección automática es la opción recomendada para el escenario de cable UTP directo. La detección manual queda como mecanismo de prueba puntual cuando el técnico ya conoce una IP concreta.
 
 Además, la interfaz diferencia entre:
 
