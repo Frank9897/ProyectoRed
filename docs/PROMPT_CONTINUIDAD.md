@@ -186,6 +186,7 @@ Ya se encuentran implementados:
 - Filtro por estado operativo Up.
 - Filtro por tipo Ethernet.
 - Detección adicional de interfaz física para Linux y Windows.
+- Clasificación básica de IPv4 mediante ClasificadorDireccionService, sin modificar el modelo DispositivoDetectado.
 - Obtención del nombre de interfaz.
 - Obtención y formateo de la dirección MAC.
 - Obtención de direcciones IPv4.
@@ -276,6 +277,35 @@ No incorporar todavía:
 - historial;
 - topología;
 - mapas.
+
+## Clasificación básica de IPv4
+
+La clasificación de la dirección se agregó como lógica independiente y no modifica el modelo DispositivoDetectado.
+
+El servicio ClasificadorDireccionService recibe una IPv4 y devuelve una descripción:
+
+~~~text
+IPv4 privada
+IPv4 Link-Local
+IPv4 pública/global
+IPv4 de loopback
+IPv4 multicast
+IPv4 no especificada
+~~~
+
+Ejemplos:
+
+~~~text
+10.0.1.1       -> IPv4 privada
+192.168.0.1    -> IPv4 privada
+169.254.10.20  -> IPv4 Link-Local
+8.8.8.8        -> IPv4 pública/global
+127.0.0.1      -> IPv4 de loopback
+224.0.0.1      -> IPv4 multicast
+0.0.0.0        -> IPv4 no especificada
+~~~
+
+El objetivo es informar al técnico sin convertir la clasificación en un dato permanente del modelo principal.
 
 ## Acceso a la interfaz del dispositivo
 
