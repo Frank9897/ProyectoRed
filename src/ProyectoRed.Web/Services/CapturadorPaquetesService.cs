@@ -237,15 +237,15 @@ public class CapturadorPaquetesService
                 // una puerta de enlace configurada en la PC.
                 if (string.IsNullOrWhiteSpace(resultado.DireccionMac))
                 {
-                    string direccionGestionLldp =
+                    string direccionGestionLldpAnterior =
                         IntentarExtraerDireccionGestionLldp(
                             capturaBruta.Data);
 
                     if (!string.IsNullOrWhiteSpace(
-                            direccionGestionLldp))
+                            direccionGestionLldpAnterior))
                     {
                         resultado.DireccionIP =
-                            direccionGestionLldp;
+                            direccionGestionLldpAnterior;
 
                         resultado.DireccionMac =
                             macLldp;
@@ -339,8 +339,7 @@ public class CapturadorPaquetesService
         dispositivoSeleccionado.OnPacketArrival +=
             CuandoLlegaPaquete;
 
-        dispositivoSeleccionado.Open(
-            DeviceModes.Normal);
+        dispositivoSeleccionado.Open();
 
         Console.WriteLine(
             $"Captura iniciada en: {dispositivoSeleccionado.Name}");
