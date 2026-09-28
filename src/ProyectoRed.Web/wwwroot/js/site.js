@@ -7,8 +7,20 @@ document.addEventListener("DOMContentLoaded", function () {
     const estadoDeteccion =
         document.getElementById("estadoDeteccion");
 
+    const estadoInterfaz =
+        document.getElementById("estadoInterfaz");
+
+    const direccionIpObjetivo =
+        document.getElementById("direccionIpObjetivo");
+
+    const direccionIpLocalManual =
+        document.getElementById("direccionIpLocalManual");
+
     const resultadoDeteccion =
         document.getElementById("resultadoDeteccion");
+
+    const resultadoEnlace =
+        document.getElementById("resultadoEnlace");
 
     const resultadoIp =
         document.getElementById("resultadoIp");
@@ -40,6 +52,25 @@ document.addEventListener("DOMContentLoaded", function () {
     if (!interfazRed || !btnComenzar) {
         return;
     }
+
+    interfazRed.addEventListener("change", function () {
+        const opcion =
+            interfazRed.options[interfazRed.selectedIndex];
+
+        if (!opcion || !opcion.value) {
+            estadoInterfaz.textContent =
+                "IPv4 actual: seleccione una interfaz.";
+
+            return;
+        }
+
+        const ipActual =
+            opcion.dataset.ip || "";
+
+        estadoInterfaz.textContent =
+            "IPv4 actual: " +
+            (ipActual || "sin IPv4 configurada.");
+    });
 
     btnAbrirInterfaz.addEventListener("click", async function () {
         const nombreInterfaz = interfazRed.value;
@@ -155,9 +186,28 @@ document.addEventListener("DOMContentLoaded", function () {
             "Detectando durante unos segundos...";
 
         try {
+            const parametros =
+                new URLSearchParams();
+
+            parametros.set(
+                "nombreInterfaz",
+                nombreInterfaz);
+
+            if (direccionIpObjetivo.value.trim()) {
+                parametros.set(
+                    "direccionIPObjetivo",
+                    direccionIpObjetivo.value.trim());
+            }
+
+            if (direccionIpLocalManual.value.trim()) {
+                parametros.set(
+                    "direccionIPLocalManual",
+                    direccionIpLocalManual.value.trim());
+            }
+
             const respuesta = await fetch(
-                "/Home/Descubrir?nombreInterfaz=" +
-                encodeURIComponent(nombreInterfaz)
+                "/Home/Descubrir?" +
+                parametros.toString()
             );
 
             const datos = await respuesta.json();
@@ -168,6 +218,9 @@ document.addEventListener("DOMContentLoaded", function () {
                     "No se pudo realizar la detección."
                 );
             }
+
+            const enlaceActivo =
+                datos.enlaceActivo === true;
 
             const macDetectada =
                 datos.direccionMac || "";
@@ -181,18 +234,16 @@ document.addEventListener("DOMContentLoaded", function () {
             const tipoDireccionDetectada =
                 datos.tipoDireccionIP || "";
 
-            if (!macDetectada) {
-                estadoDeteccion.textContent =
-                    "No se detectó ningún dispositivo durante la prueba.";
-
-                return;
-            }
+            resultadoEnlace.textContent =
+                enlaceActivo
+                    ? "Activo"
+                    : "Sin enlace";
 
             resultadoIp.textContent =
                 ipDetectada || "No disponible";
 
             resultadoMac.textContent =
-                macDetectada;
+                macDetectada || "No disponible";
 
             resultadoTipoDireccion.textContent =
                 tipoDireccionDetectada || "No disponible";
@@ -202,10 +253,24 @@ document.addEventListener("DOMContentLoaded", function () {
 
             mensajeAcceso.classList.add("d-none");
             configuracionManual.classList.add("d-none");
+
             resultadoDeteccion.classList.remove("d-none");
 
-            estadoDeteccion.textContent =
-                "Detección finalizada.";
+            if (macDetectada) {
+                estadoDeteccion.textContent =
+                    datos.mensajeEstado ||
+                    "Detección finalizada.";
+            }
+            else if (enlaceActivo) {
+                estadoDeteccion.textContent =
+                    datos.mensajeEstado ||
+                    "El enlace UTP está activo, pero no se pudo identificar el dispositivo.";
+            }
+            else {
+                estadoDeteccion.textContent =
+                    datos.mensajeEstado ||
+                    "No hay un enlace Ethernet activo.";
+            }
         }
         catch (error) {
             estadoDeteccion.textContent =
