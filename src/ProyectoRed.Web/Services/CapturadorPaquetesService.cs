@@ -1,5 +1,4 @@
 using PacketDotNet;
-using PacketDotNet.Lldp;
 using ProyectoRed.Web.Models;
 using SharpPcap;
 using System.Linq;
@@ -113,9 +112,17 @@ public class CapturadorPaquetesService
                     AddressFamily.InterNetwork);
 
 
-        // La IPv4 y la puerta de enlace son necesarias únicamente para
-        // realizar la consulta ARP dirigida al gateway. La captura
-        // pasiva puede funcionar sin ninguna de las dos.
+        IPAddress mascaraRedLocal =
+            propiedadesIp.UnicastAddresses
+                .Where(direccion =>
+                    direccion.Address.AddressFamily ==
+                    AddressFamily.InterNetwork)
+                .Select(direccion => direccion.IPv4Mask)
+                .FirstOrDefault();
+
+        // La detección automática utiliza la IPv4 y la máscara local cuando
+        // están disponibles. La puerta de enlace se usa solo como candidato
+        // prioritario; no es un requisito para descubrir el dispositivo.
         PhysicalAddress direccionMacLocal =
             interfazRed.GetPhysicalAddress();
 
@@ -131,25 +138,62 @@ public class CapturadorPaquetesService
             new DispositivoDetectado();
 
         bool vecinoDirectoDetectado = false;
+        string macVecinoDirecto = string.Empty;
+        string origenDeteccion = string.Empty;
 
-        Dictionary<string, string> nombresLldpPorMac =
-            new Dictionary<string, string>(
-                StringComparer.OrdinalIgnoreCase);
+        HashSet<uint> objetivosArpActivos =
+            new HashSet<uint>();
+
+        void RegistrarOrigen(string origen)
+        {
+            if (string.IsNullOrWhiteSpace(origen))
+            {
+                return;
+            }
+
+            if (string.IsNullOrWhiteSpace(origenDeteccion))
+            {
+                origenDeteccion = origen;
+                return;
+            }
+
+            if (origenDeteccion.Contains(
+                    origen,
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                return;
+            }
+
+            origenDeteccion += $" + {origen}";
+        }
+
+        bool EsNuestraMac(PhysicalAddress direccionMac)
+        {
+            return direccionMacLocal != null &&
+                   direccionMacLocal.GetAddressBytes().Length == 6 &&
+                   direccionMac.Equals(direccionMacLocal);
+        }
+
+        bool EsNuestraIp(IPAddress direccionIp)
+        {
+            return direccionIpLocal != null &&
+                   direccionIp.Equals(direccionIpLocal);
+        }
 
         void CuandoLlegaPaquete(
             object sender,
             PacketCapture captura)
         {
-            var capturaBruta = captura.GetPacket();
+            var capturaBruta =
+                captura.GetPacket();
 
-            if (capturaBruta.LinkLayerType != LinkLayers.Ethernet)
+            if (capturaBruta.LinkLayerType !=
+                LinkLayers.Ethernet)
             {
                 return;
             }
 
-            // LLDP identifica al vecino directamente conectado al puerto.
-            // Lo analizamos sobre los bytes crudos para no depender de
-            // que PacketDotNet reconozca el encapsulado o una VLAN.
+            // LLDP identifica al vecino conectado al puerto.
             if (IntentarExtraerInformacionLldp(
                     capturaBruta.Data,
                     out string macLldpDirecta,
@@ -157,29 +201,61 @@ public class CapturadorPaquetesService
                     out string direccionGestionLldp))
             {
                 vecinoDirectoDetectado = true;
-                resultado.DireccionMac = macLldpDirecta;
-                resultado.DireccionIP =
-                    direccionGestionLldp ?? string.Empty;
+                macVecinoDirecto = macLldpDirecta;
+
+                resultado.DireccionMac =
+                    macLldpDirecta;
+
                 resultado.Nombre =
                     nombreLldpDirecto ?? string.Empty;
 
-                return;
+                RegistrarOrigen("LLDP");
+
+                // En detección manual la IP introducida por el técnico
+                // sigue siendo la dirección objetivo. Si LLDP solo aporta
+                // MAC/nombre, continuamos para completar la IP mediante ARP.
+                if (!string.IsNullOrWhiteSpace(direccionGestionLldp) &&
+                    string.IsNullOrWhiteSpace(direccionIPObjetivo))
+                {
+                    resultado.DireccionIP =
+                        direccionGestionLldp;
+
+                    return;
+                }
             }
 
-            // CDP también identifica al vecino directamente conectado.
-            string nombreCdp =
-                IntentarExtraerNombreCdp(
-                    capturaBruta.Data,
-                    out string macCdp);
+            // CDP identifica de la misma forma al vecino Cisco y, cuando
+            // el anuncio contiene direcciones, puede aportar la IP.
+            IntentarExtraerInformacionCdp(
+                capturaBruta.Data,
+                out string macCdp,
+                out string nombreCdp,
+                out string direccionGestionCdp);
 
-            if (nombreCdp != null)
+            if (!string.IsNullOrWhiteSpace(macCdp))
             {
                 vecinoDirectoDetectado = true;
-                resultado.DireccionMac = macCdp;
-                resultado.DireccionIP = string.Empty;
-                resultado.Nombre = nombreCdp;
+                macVecinoDirecto = macCdp;
 
-                return;
+                resultado.DireccionMac =
+                    macCdp;
+
+                if (!string.IsNullOrWhiteSpace(nombreCdp))
+                {
+                    resultado.Nombre =
+                        nombreCdp;
+                }
+
+                RegistrarOrigen("CDP");
+
+                if (!string.IsNullOrWhiteSpace(direccionGestionCdp) &&
+                    string.IsNullOrWhiteSpace(direccionIPObjetivo))
+                {
+                    resultado.DireccionIP =
+                        direccionGestionCdp;
+
+                    return;
+                }
             }
 
             Packet paquete =
@@ -187,133 +263,99 @@ public class CapturadorPaquetesService
                     capturaBruta.LinkLayerType,
                     capturaBruta.Data);
 
-            EthernetPacket ethernet =
-                paquete as EthernetPacket;
-
-            if (ethernet == null)
+            if (paquete is not EthernetPacket ethernet)
             {
                 return;
             }
 
-            // LLDP puede aparecer antes o después de la respuesta ARP.
-            // Guardamos el nombre asociado a su MAC para poder unirlo
-            // posteriormente con el mismo dispositivo.
-            LldpPacket lldp =
-                ethernet.PayloadPacket as LldpPacket;
+            // Si el vecino directamente conectado intercambia tráfico IPv4
+            // con la PC, la propia trama ya nos da IP y MAC sin necesitar ARP.
+            IPv4Packet ipv4 =
+                ethernet.PayloadPacket as IPv4Packet;
 
-            if (lldp != null && !vecinoDirectoDetectado)
+            if (ipv4 != null &&
+                !EsNuestraIp(ipv4.SourceAddress))
             {
-                string macLldp =
-                    FormatearMac(ethernet.SourceHardwareAddress);
+                string macFuenteIpv4 =
+                    FormatearMac(
+                        ethernet.SourceHardwareAddress);
 
-                foreach (Tlv tlv in lldp.TlvCollection)
+                bool destinoEsNuestraMac =
+                    EsNuestraMac(
+                        ethernet.DestinationHardwareAddress);
+
+                bool esVecinoDirecto =
+                    vecinoDirectoDetectado &&
+                    string.Equals(
+                        macFuenteIpv4,
+                        macVecinoDirecto,
+                        StringComparison.OrdinalIgnoreCase);
+
+                if ((!vecinoDirectoDetectado &&
+                     destinoEsNuestraMac) ||
+                    esVecinoDirecto)
                 {
-                    if (tlv.Type != TlvType.SystemName)
-                    {
-                        continue;
-                    }
-
-                    SystemNameTlv systemName =
-                        (SystemNameTlv)tlv;
-
-                    nombresLldpPorMac[macLldp] =
-                        systemName.Name;
-
-                    if (string.Equals(
-                            macLldp,
-                            resultado.DireccionMac,
-                            StringComparison.OrdinalIgnoreCase))
-                    {
-                        resultado.Nombre =
-                            systemName.Name;
-                    }
-
-                    break;
-                }
-
-                // Algunos dispositivos anuncian su IP de gestión
-                // mediante el Management Address TLV de LLDP.
-                // Esto permite identificar un switch aunque no exista
-                // una puerta de enlace configurada en la PC.
-                if (string.IsNullOrWhiteSpace(resultado.DireccionMac))
-                {
-                    string direccionGestionLldpAnterior =
-                        IntentarExtraerDireccionGestionLldp(
-                            capturaBruta.Data);
-
                     if (!string.IsNullOrWhiteSpace(
-                            direccionGestionLldpAnterior))
+                            ipv4.SourceAddress.ToString()) &&
+                        !ipv4.SourceAddress.Equals(IPAddress.Any))
                     {
                         resultado.DireccionIP =
-                            direccionGestionLldpAnterior;
+                            ipv4.SourceAddress.ToString();
 
                         resultado.DireccionMac =
-                            macLldp;
+                            macFuenteIpv4;
+
+                        RegistrarOrigen("IPv4");
+
+                        return;
                     }
                 }
-
-                return;
             }
 
             ArpPacket arp =
                 ethernet.PayloadPacket as ArpPacket;
 
-            if (arp == null)
+            if (arp == null ||
+                arp.Operation != ArpOperation.Response)
             {
                 return;
             }
 
-            // Aceptamos cualquier respuesta ARP que llegue por este
-            // cable: puede ser del gateway (si respondió a nuestra
-            // consulta dirigida) o de cualquier otro dispositivo
-            // conectado directamente (switch, PC, etc.) que haya
-            // emitido ARP de forma espontánea (gratuitous ARP,
-            // resolución hacia otro host, etc.). Esto es lo que
-            // permite detectar el switch de piso aunque no sea
-            // la puerta de enlace de la red.
-            if (arp.Operation != ArpOperation.Response)
+            if (EsNuestraIp(arp.SenderProtocolAddress) ||
+                EsNuestraMac(arp.SenderHardwareAddress))
             {
                 return;
             }
 
-            // Si LLDP/CDP ya identificó al vecino directamente
-            // conectado, no lo reemplazamos con tráfico ARP.
-            if (vecinoDirectoDetectado)
+            string macFuenteArp =
+                FormatearMac(
+                    arp.SenderHardwareAddress);
+
+            // Si LLDP/CDP identificó un vecino directo pero todavía no
+            // tenemos su IP, solo aceptamos ARP proveniente de esa misma MAC.
+            if (vecinoDirectoDetectado &&
+                !string.Equals(
+                    macFuenteArp,
+                    macVecinoDirecto,
+                    StringComparison.OrdinalIgnoreCase))
             {
                 return;
             }
 
-            IPAddress direccionArpEsperada = null;
+            uint ipRemota =
+                ConvertirIPv4(arp.SenderProtocolAddress);
 
-            if (!string.IsNullOrWhiteSpace(direccionIPObjetivo) &&
-                IPAddress.TryParse(
-                    direccionIPObjetivo,
-                    out IPAddress direccionObjetivoArp))
-            {
-                direccionArpEsperada = direccionObjetivoArp;
-            }
-            else if (direccionIpLocal != null &&
-                     puertaEnlace != null)
-            {
-                direccionArpEsperada = puertaEnlace;
-            }
-
-            // Cuando existe una consulta ARP dirigida, solo aceptamos
-            // la respuesta de esa IP. Esto evita tomar otra respuesta
-            // como si fuera el dispositivo conectado.
-
-            // Cuando existe una consulta dirigida, la respuesta
-            // debe corresponder exactamente a esa IP.
-            if (direccionArpEsperada != null &&
-                !arp.SenderProtocolAddress.Equals(
-                    direccionArpEsperada))
+            if (objetivosArpActivos.Count > 0 &&
+                !objetivosArpActivos.Contains(ipRemota))
             {
                 return;
             }
 
-            // La MAC Ethernet y la MAC declarada por ARP deben coincidir.
-            if (!ethernet.SourceHardwareAddress.Equals(
-                    arp.SenderHardwareAddress))
+            // En captura puramente pasiva solo aceptamos respuestas
+            // dirigidas a la MAC de la PC.
+            if (objetivosArpActivos.Count == 0 &&
+                !EsNuestraMac(
+                    ethernet.DestinationHardwareAddress))
             {
                 return;
             }
@@ -322,24 +364,16 @@ public class CapturadorPaquetesService
                 arp.SenderProtocolAddress.ToString();
 
             resultado.DireccionMac =
-                FormatearMac(arp.SenderHardwareAddress);
+                macFuenteArp;
 
-            string macResultado =
-                resultado.DireccionMac;
-
-            if (nombresLldpPorMac.TryGetValue(
-                    macResultado,
-                    out string nombreLldp))
-            {
-                resultado.Nombre =
-                    nombreLldp;
-            }
+            RegistrarOrigen("ARP");
         }
 
         dispositivoSeleccionado.OnPacketArrival +=
             CuandoLlegaPaquete;
 
-        dispositivoSeleccionado.Open();
+        dispositivoSeleccionado.Open(
+            DeviceModes.Promiscuous);
 
         Console.WriteLine(
             $"Captura iniciada en: {dispositivoSeleccionado.Name}");
@@ -349,82 +383,97 @@ public class CapturadorPaquetesService
             // Comenzamos a escuchar antes de cualquier consulta.
             dispositivoSeleccionado.StartCapture();
 
-            IPAddress direccionDestinoArp = null;
             IPAddress direccionOrigenArp =
                 direccionIpLocal ??
                 direccionIpLocalManualParseada ??
                 IPAddress.Any;
 
-            bool consultaArpDirigida = false;
-
-            if (!string.IsNullOrWhiteSpace(direccionIPObjetivo))
+            if (dispositivoSeleccionado is not IInjectionDevice dispositivoInyeccion)
             {
-                direccionDestinoArp =
-                    IPAddress.Parse(direccionIPObjetivo);
-
-                consultaArpDirigida = true;
-            }
-            else if (direccionIpLocal != null &&
-                     puertaEnlace != null)
-            {
-                direccionDestinoArp = puertaEnlace;
-                consultaArpDirigida = true;
+                throw new InvalidOperationException(
+                    "El dispositivo de captura seleccionado no permite inyección de paquetes.");
             }
 
-            if (consultaArpDirigida)
-            {
-                ArpPacket solicitudArp =
-                    new ArpPacket(
-                        ArpOperation.Request,
-                        direccionMacVacia,
-                        direccionDestinoArp,
-                        direccionMacLocal,
-                        direccionOrigenArp);
+            bool busquedaManual =
+                !string.IsNullOrWhiteSpace(direccionIPObjetivo);
 
-                EthernetPacket tramaArp =
-                    new EthernetPacket(
+            List<IPAddress> objetivosArp =
+                busquedaManual
+                    ? new List<IPAddress>
+                    {
+                        IPAddress.Parse(direccionIPObjetivo)
+                    }
+                    : ObtenerObjetivosAutomaticos(
+                        direccionIpLocal,
+                        mascaraRedLocal,
+                        puertaEnlace);
+
+            objetivosArpActivos.Clear();
+
+            foreach (IPAddress objetivo in objetivosArp)
+            {
+                if (!EsDireccionValidaArp(
+                        objetivo,
+                        direccionIpLocal))
+                {
+                    continue;
+                }
+
+                objetivosArpActivos.Add(
+                    ConvertirIPv4(objetivo));
+            }
+
+            // La captura ya está activa; primero escuchamos y después
+            // enviamos las sondas para no perder una respuesta rápida.
+            Console.WriteLine(
+                busquedaManual
+                    ? $"Detección dirigida iniciada para {direccionIPObjetivo}."
+                    : $"Detección automática iniciada. Sondas ARP: {objetivosArpActivos.Count}.");
+
+            foreach (IPAddress objetivo in objetivosArp)
+            {
+                if (string.IsNullOrWhiteSpace(
+                        resultado.DireccionIP) &&
+                    EsDireccionValidaArp(
+                        objetivo,
+                        direccionIpLocal))
+                {
+                    EnviarConsultaArp(
+                        dispositivoInyeccion,
                         direccionMacLocal,
                         direccionMacBroadcast,
-                        EthernetType.Arp);
+                        direccionMacVacia,
+                        objetivo,
+                        direccionOrigenArp);
 
-                tramaArp.PayloadPacket =
-                    solicitudArp;
-
-                if (dispositivoSeleccionado is not IInjectionDevice dispositivoInyeccion)
-                {
-                    throw new InvalidOperationException(
-                        "El dispositivo de captura seleccionado no permite inyección de paquetes.");
+                    if (busquedaManual)
+                    {
+                        Console.WriteLine(
+                            $"Consulta ARP enviada para: {objetivo}");
+                    }
                 }
 
-                dispositivoInyeccion.SendPacket(tramaArp);
-
-                if (!string.IsNullOrWhiteSpace(direccionIPObjetivo))
+                if (!string.IsNullOrWhiteSpace(
+                        resultado.DireccionIP))
                 {
-                    Console.WriteLine(
-                        $"Consulta ARP manual enviada para: {direccionDestinoArp}");
-                }
-                else
-                {
-                    Console.WriteLine(
-                        $"Consulta ARP enviada para: {direccionDestinoArp}");
+                    break;
                 }
             }
-            else
+
+            if (objetivosArpActivos.Count == 0)
             {
                 Console.WriteLine(
-                    "No hay destino ARP conocido. " +
-                    "Se realizará descubrimiento pasivo mediante el tráfico recibido.");
+                    "No se generaron objetivos ARP automáticos. " +
+                    "Se continuará únicamente con LLDP, CDP y captura pasiva.");
             }
-
-            TimeSpan tiempoEspera =
-                consultaArpDirigida
-                    ? TimeSpan.FromSeconds(3)
-                    : TimeSpan.FromSeconds(5);
 
             await EsperarResultadoAsync(
                 resultado,
-                tiempoEspera);
-        }
+                TimeSpan.FromSeconds(
+                    busquedaManual
+                        ? 3
+                        : 5));
+
         finally
         {
             dispositivoSeleccionado.StopCapture();
@@ -439,16 +488,8 @@ public class CapturadorPaquetesService
 
         if (string.IsNullOrWhiteSpace(resultado.DireccionMac))
         {
-            if (puertaEnlace != null)
-            {
-                Console.WriteLine(
-                    $"No se recibió una respuesta ARP para {puertaEnlace}.");
-            }
-            else
-            {
-                Console.WriteLine(
-                    "No se detectó ningún dispositivo durante la captura pasiva.");
-            }
+            Console.WriteLine(
+                "No se identificó ningún vecino durante la detección.");
         }
         else
         {
@@ -456,7 +497,8 @@ public class CapturadorPaquetesService
                 $"Dispositivo identificado | " +
                 $"IP: {resultado.DireccionIP} | " +
                 $"MAC: {resultado.DireccionMac} | " +
-                $"Nombre: {resultado.Nombre}");
+                $"Nombre: {resultado.Nombre} | " +
+                $"Origen: {origenDeteccion}");
 
             await _historialDispositivosService.RegistrarAsync(
                 new RegistroDispositivo
@@ -465,7 +507,10 @@ public class CapturadorPaquetesService
                     DireccionMac = resultado.DireccionMac,
                     Nombre = resultado.Nombre,
                     NombreInterfaz = nombreInterfaz,
-                    Origen = "ARP",
+                    Origen = string.IsNullOrWhiteSpace(
+                        origenDeteccion)
+                        ? "Desconocido"
+                        : origenDeteccion,
                     FechaDeteccion = DateTime.Now
                 });
         }
@@ -686,54 +731,59 @@ public class CapturadorPaquetesService
 
     /// <summary>
     /// Busca una trama CDP dentro de los bytes crudos del frame
-    /// (LLC/SNAP con OUI Cisco 00-00-0C y PID 0x2000) y, si la
-    /// encuentra, extrae el TLV Device-ID (tipo 0x0001). Devuelve
-    /// null si el frame no es CDP.
+    /// (LLC/SNAP con OUI Cisco 00-00-0C y PID 0x2000).
+    /// Extrae Device-ID y la primera dirección IPv4 del Address TLV.
     /// </summary>
-    private string IntentarExtraerNombreCdp(
+    private void IntentarExtraerInformacionCdp(
         byte[] datos,
-        out string macOrigen)
+        out string macOrigen,
+        out string nombreDispositivo,
+        out string direccionGestion)
     {
         macOrigen = null;
+        nombreDispositivo = null;
+        direccionGestion = null;
 
-        // Mínimo: 6 (dst) + 6 (src) + 2 (len) + 3 (LLC) + 5 (SNAP) + 4 (CDP header)
         const int longitudMinima = 26;
 
-        if (datos == null || datos.Length < longitudMinima)
+        if (datos == null ||
+            datos.Length < longitudMinima)
         {
-            return null;
+            return;
         }
 
-        // LLC: DSAP=0xAA SSAP=0xAA Control=0x03, arranca en el byte 14
-        // (después de las dos MAC y el campo "longitud" de 802.3).
         if (datos[14] != 0xAA ||
             datos[15] != 0xAA ||
             datos[16] != 0x03)
         {
-            return null;
+            return;
         }
 
-        // SNAP: OUI Cisco = 00-00-0C, PID CDP = 0x2000.
         if (datos[17] != 0x00 ||
             datos[18] != 0x00 ||
             datos[19] != 0x0C ||
             datos[20] != 0x20 ||
             datos[21] != 0x00)
         {
-            return null;
+            return;
         }
 
-        // Cabecera CDP: version(1) ttl(1) checksum(2). Los TLV
-        // arrancan en el byte 26.
+        macOrigen =
+            FormatearMac(
+                new PhysicalAddress(
+                    datos.Skip(6).Take(6).ToArray()));
+
         int posicion = 26;
 
         while (posicion + 4 <= datos.Length)
         {
             int tipoTlv =
-                (datos[posicion] << 8) | datos[posicion + 1];
+                (datos[posicion] << 8) |
+                datos[posicion + 1];
 
             int longitudTlv =
-                (datos[posicion + 2] << 8) | datos[posicion + 3];
+                (datos[posicion + 2] << 8) |
+                datos[posicion + 3];
 
             if (longitudTlv < 4 ||
                 posicion + longitudTlv > datos.Length)
@@ -741,30 +791,421 @@ public class CapturadorPaquetesService
                 break;
             }
 
-            // Tipo 0x0001 = Device-ID.
-            if (tipoTlv == 0x0001)
-            {
-                int longitudValor =
-                    longitudTlv - 4;
+            int inicioValor =
+                posicion + 4;
 
-                string deviceId =
+            int longitudValor =
+                longitudTlv - 4;
+
+            // 0x0001 = Device-ID.
+            if (tipoTlv == 0x0001 &&
+                longitudValor > 0)
+            {
+                nombreDispositivo =
                     System.Text.Encoding.ASCII.GetString(
                         datos,
-                        posicion + 4,
+                        inicioValor,
+                        longitudValor)
+                    .TrimEnd(' ');
+            }
+
+            // 0x0002 = Address TLV. El valor comienza con la cantidad
+            // de direcciones y luego cada dirección contiene protocolo,
+            // longitud del protocolo, valor del protocolo, longitud de
+            // dirección y los bytes de la dirección.
+            if (tipoTlv == 0x0002 &&
+                longitudValor >= 4)
+            {
+                direccionGestion =
+                    ExtraerDireccionIpv4CdpAddressTlv(
+                        datos,
+                        inicioValor,
                         longitudValor);
-
-                macOrigen =
-                    FormatearMac(
-                        new PhysicalAddress(
-                            datos.Skip(6).Take(6).ToArray()));
-
-                return deviceId;
             }
 
             posicion += longitudTlv;
         }
+    }
+
+    private string ExtraerDireccionIpv4CdpAddressTlv(
+        byte[] datos,
+        int inicio,
+        int longitud)
+    {
+        if (inicio < 0 ||
+            longitud < 4 ||
+            inicio + longitud > datos.Length)
+        {
+            return null;
+        }
+
+        int cantidadDirecciones =
+            (datos[inicio] << 24) |
+            (datos[inicio + 1] << 16) |
+            (datos[inicio + 2] << 8) |
+            datos[inicio + 3];
+
+        int posicion =
+            inicio + 4;
+
+        int fin =
+            inicio + longitud;
+
+        for (int indice = 0;
+             indice < cantidadDirecciones &&
+             posicion + 4 <= fin;
+             indice++)
+        {
+            int tipoProtocolo =
+                datos[posicion];
+
+            int longitudProtocolo =
+                datos[posicion + 1];
+
+            posicion += 2;
+
+            if (posicion + longitudProtocolo + 2 > fin)
+            {
+                break;
+            }
+
+            byte[] protocolo =
+                datos.Skip(
+                        posicion,
+                        longitudProtocolo)
+                    .ToArray();
+
+            posicion += longitudProtocolo;
+
+            int longitudDireccion =
+                (datos[posicion] << 8) |
+                datos[posicion + 1];
+
+            posicion += 2;
+
+            if (posicion + longitudDireccion > fin)
+            {
+                break;
+            }
+
+            // NLPID 0x01 + protocolo IP y longitud de dirección 4
+            // corresponde a una dirección IPv4 en el formato observado
+            // por CDP.
+            if (tipoProtocolo == 0x01 &&
+                longitudProtocolo == 1 &&
+                protocolo[0] == 0xCC &&
+                longitudDireccion == 4)
+            {
+                return new IPAddress(
+                    datos.Skip(
+                            posicion,
+                            4)
+                        .ToArray())
+                    .ToString();
+            }
+
+            posicion += longitudDireccion;
+        }
 
         return null;
+    }
+
+    private List<IPAddress> ObtenerObjetivosAutomaticos(
+        IPAddress direccionIpLocal,
+        IPAddress mascaraRedLocal,
+        IPAddress puertaEnlace)
+    {
+        List<IPAddress> objetivos =
+            new List<IPAddress>();
+
+        HashSet<uint> vistos =
+            new HashSet<uint>();
+
+        void Agregar(IPAddress direccion)
+        {
+            if (!EsDireccionValidaArp(
+                    direccion,
+                    direccionIpLocal))
+            {
+                return;
+            }
+
+            uint valor =
+                ConvertirIPv4(direccion);
+
+            if (vistos.Add(valor))
+            {
+                objetivos.Add(direccion);
+            }
+        }
+
+        // Primero la puerta de enlace, si existe.
+        Agregar(puertaEnlace);
+
+        if (direccionIpLocal != null &&
+            mascaraRedLocal != null)
+        {
+            uint ipLocal =
+                ConvertirIPv4(direccionIpLocal);
+
+            uint mascara =
+                ConvertirIPv4(mascaraRedLocal);
+
+            uint red =
+                ipLocal & mascara;
+
+            uint broadcast =
+                red | ~mascara;
+
+            ulong cantidadDirecciones =
+                (ulong)broadcast -
+                red +
+                1UL;
+
+            // /31 se utiliza como enlace punto a punto: ambas direcciones
+            // son utilizables. Para redes de hasta /16 realizamos un
+            // sondeo completo de los hosts de esa red.
+            if (cantidadDirecciones == 2UL)
+            {
+                Agregar(
+                    ConvertirAIPv4(red));
+
+                Agregar(
+                    ConvertirAIPv4(broadcast));
+            }
+            else if (cantidadDirecciones <= 65536UL)
+            {
+                Agregar(
+                    ConvertirAIPv4(red + 1U));
+
+                if (broadcast > red + 1U)
+                {
+                    Agregar(
+                        ConvertirAIPv4(broadcast - 1U));
+                }
+
+                if (broadcast > red + 1U)
+                {
+                    for (uint candidato = red + 1U;
+                         candidato < broadcast;
+                         candidato++)
+                    {
+                        if (candidato == ipLocal)
+                        {
+                            continue;
+                        }
+
+                        Agregar(
+                            ConvertirAIPv4(candidato));
+                    }
+                }
+            }
+        }
+
+        // Candidatos habituales para equipos de administración cuando
+        // la PC está en otra red o todavía no tiene IPv4.
+        AgregarRedComun(
+            objetivos,
+            vistos,
+            direccionIpLocal,
+            "10.0.0.0");
+
+        AgregarRedComun(
+            objetivos,
+            vistos,
+            direccionIpLocal,
+            "10.0.1.0");
+
+        AgregarRedComun(
+            objetivos,
+            vistos,
+            direccionIpLocal,
+            "192.168.0.0");
+
+        AgregarRedComun(
+            objetivos,
+            vistos,
+            direccionIpLocal,
+            "192.168.1.0");
+
+        AgregarRedComun(
+            objetivos,
+            vistos,
+            direccionIpLocal,
+            "192.168.100.0");
+
+        AgregarRedComun(
+            objetivos,
+            vistos,
+            direccionIpLocal,
+            "172.16.0.0");
+
+        // APIPA/link-local: útil cuando el dispositivo está sin DHCP.
+        AgregarRedComun(
+            objetivos,
+            vistos,
+            direccionIpLocal,
+            "169.254.0.0");
+
+        return objetivos;
+    }
+
+    private void AgregarRedComun(
+        List<IPAddress> objetivos,
+        HashSet<uint> vistos,
+        IPAddress direccionIpLocal,
+        string direccionRed)
+    {
+        IPAddress red =
+            IPAddress.Parse(direccionRed);
+
+        uint baseRed =
+            ConvertirIPv4(red);
+
+        uint broadcast =
+            baseRed | 0x000000FFU;
+
+        // Primero .1 y .254 para encontrar rápidamente equipos con
+        // direcciones por defecto habituales.
+        AgregarObjetivo(
+            objetivos,
+            vistos,
+            ConvertirAIPv4(baseRed + 1U),
+            direccionIpLocal);
+
+        AgregarObjetivo(
+            objetivos,
+            vistos,
+            ConvertirAIPv4(broadcast - 1U),
+            direccionIpLocal);
+
+        for (uint candidato = baseRed + 1U;
+             candidato < broadcast;
+             candidato++)
+        {
+            if (candidato == baseRed + 1U ||
+                candidato == broadcast - 1U)
+            {
+                continue;
+            }
+
+            AgregarObjetivo(
+                objetivos,
+                vistos,
+                ConvertirAIPv4(candidato),
+                direccionIpLocal);
+        }
+    }
+
+    private void AgregarObjetivo(
+        List<IPAddress> objetivos,
+        HashSet<uint> vistos,
+        IPAddress direccion,
+        IPAddress direccionIpLocal)
+    {
+        if (!EsDireccionValidaArp(
+                direccion,
+                direccionIpLocal))
+        {
+            return;
+        }
+
+        uint valor =
+            ConvertirIPv4(direccion);
+
+        if (vistos.Add(valor))
+        {
+            objetivos.Add(direccion);
+        }
+    }
+
+    private bool EsDireccionValidaArp(
+        IPAddress direccion,
+        IPAddress direccionIpLocal)
+    {
+        if (direccion == null ||
+            direccion.AddressFamily !=
+            AddressFamily.InterNetwork)
+        {
+            return false;
+        }
+
+        if (direccion.Equals(IPAddress.Any) ||
+            direccion.Equals(IPAddress.Broadcast) ||
+            direccion.Equals(IPAddress.Loopback))
+        {
+            return false;
+        }
+
+        byte primerOcteto =
+            direccion.GetAddressBytes()[0];
+
+        if (primerOcteto >= 224 &&
+            primerOcteto <= 239)
+        {
+            return false;
+        }
+
+        if (direccionIpLocal != null &&
+            direccion.Equals(direccionIpLocal))
+        {
+            return false;
+        }
+
+        return true;
+    }
+
+    private void EnviarConsultaArp(
+        IInjectionDevice dispositivoInyeccion,
+        PhysicalAddress direccionMacLocal,
+        PhysicalAddress direccionMacBroadcast,
+        PhysicalAddress direccionMacVacia,
+        IPAddress direccionDestino,
+        IPAddress direccionOrigen)
+    {
+        ArpPacket solicitudArp =
+            new ArpPacket(
+                ArpOperation.Request,
+                direccionMacVacia,
+                direccionDestino,
+                direccionMacLocal,
+                direccionOrigen);
+
+        EthernetPacket tramaArp =
+            new EthernetPacket(
+                direccionMacLocal,
+                direccionMacBroadcast,
+                EthernetType.Arp);
+
+        tramaArp.PayloadPacket =
+            solicitudArp;
+
+        dispositivoInyeccion.SendPacket(
+            tramaArp);
+    }
+
+    private uint ConvertirIPv4(
+        IPAddress direccion)
+    {
+        byte[] bytes =
+            direccion.GetAddressBytes();
+
+        return System.Buffers.Binary.BinaryPrimitives
+            .ReadUInt32BigEndian(bytes);
+    }
+
+    private IPAddress ConvertirAIPv4(
+        uint valor)
+    {
+        byte[] bytes =
+            new byte[4];
+
+        System.Buffers.Binary.BinaryPrimitives
+            .WriteUInt32BigEndian(
+                bytes,
+                valor);
+
+        return new IPAddress(bytes);
     }
 
     private async Task EsperarResultadoAsync(
@@ -774,10 +1215,10 @@ public class CapturadorPaquetesService
         DateTime limite =
             DateTime.UtcNow.Add(tiempoMaximo);
 
-        while (string.IsNullOrWhiteSpace(resultado.DireccionMac) &&
+        while (string.IsNullOrWhiteSpace(resultado.DireccionIP) &&
                DateTime.UtcNow < limite)
         {
-            await Task.Delay(50);
+            await Task.Delay(25);
         }
     }
 
