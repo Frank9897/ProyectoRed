@@ -38,8 +38,7 @@ public class HomeController : Controller
 
     public async Task<IActionResult> Descubrir(
         string nombreInterfaz,
-        string direccionIPObjetivo,
-        string direccionIPLocalManual)
+        string direccionIPObjetivo)
     {
         if (string.IsNullOrWhiteSpace(nombreInterfaz))
         {
@@ -67,8 +66,7 @@ public class HomeController : Controller
             DispositivoDetectado resultado =
                 await _capturadorPaquetesService.CapturarAsync(
                     nombreInterfaz,
-                    direccionIPObjetivo,
-                    direccionIPLocalManual);
+                    direccionIPObjetivo);
 
             string clasificacionDireccion = string.Empty;
 
@@ -80,6 +78,15 @@ public class HomeController : Controller
             }
 
             string mensajeEstado = string.Empty;
+
+            string metodoDeteccion =
+                string.IsNullOrWhiteSpace(resultado.DireccionMac)
+                    ? string.Empty
+                    : "Método: " + (
+                        string.IsNullOrWhiteSpace(
+                            resultado.DireccionIP)
+                            ? "identidad de capa 2"
+                            : "ARP, LLDP, CDP o IPv4");
 
             if (string.IsNullOrWhiteSpace(resultado.DireccionMac))
             {
@@ -96,14 +103,20 @@ public class HomeController : Controller
                 else
                 {
                     mensajeEstado =
-                        "El enlace UTP está activo, pero el dispositivo no anunció información identificable durante la captura. " +
-                        "Pruebe la detección manual indicando la IP del dispositivo.";
+                        "El enlace UTP está activo, pero no se obtuvo una respuesta del dispositivo " +
+                        "mediante LLDP, CDP, IPv4 o ARP durante la búsqueda automática.";
                 }
+            }
+            else if (string.IsNullOrWhiteSpace(resultado.DireccionIP))
+            {
+                mensajeEstado =
+                    "Se identificó el vecino Ethernet, pero no se obtuvo una IPv4. " +
+                    "El dispositivo puede no anunciar una dirección de gestión.";
             }
             else
             {
                 mensajeEstado =
-                    "Se obtuvo información del dispositivo.";
+                    "Se identificó el dispositivo automáticamente.";
             }
 
             return Json(new
@@ -113,6 +126,12 @@ public class HomeController : Controller
                 direccionMac = resultado.DireccionMac,
                 nombre = resultado.Nombre,
                 tipoDireccionIP = clasificacionDireccion,
+                metodoDeteccion =
+                    string.IsNullOrWhiteSpace(resultado.DireccionIP)
+                        ? ""
+                        : (metodoDeteccion.Length > 8
+                            ? metodoDeteccion
+                            : "Detección automática"),
                 mensajeEstado
             });
         }
@@ -171,7 +190,6 @@ public class HomeController : Controller
     {
         return await Descubrir(
             nombreInterfaz,
-            string.Empty,
             string.Empty);
     }
 
