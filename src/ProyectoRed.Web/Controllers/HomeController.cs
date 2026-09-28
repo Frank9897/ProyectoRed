@@ -80,13 +80,7 @@ public class HomeController : Controller
             string mensajeEstado = string.Empty;
 
             string metodoDeteccion =
-                string.IsNullOrWhiteSpace(resultado.DireccionMac)
-                    ? string.Empty
-                    : "Método: " + (
-                        string.IsNullOrWhiteSpace(
-                            resultado.DireccionIP)
-                            ? "identidad de capa 2"
-                            : "ARP, LLDP, CDP o IPv4");
+                _capturadorPaquetesService.UltimoOrigenDeteccion;
 
             if (string.IsNullOrWhiteSpace(resultado.DireccionMac))
             {
@@ -127,11 +121,9 @@ public class HomeController : Controller
                 nombre = resultado.Nombre,
                 tipoDireccionIP = clasificacionDireccion,
                 metodoDeteccion =
-                    string.IsNullOrWhiteSpace(resultado.DireccionIP)
-                        ? ""
-                        : (metodoDeteccion.Length > 8
-                            ? metodoDeteccion
-                            : "Detección automática"),
+                    string.IsNullOrWhiteSpace(metodoDeteccion)
+                        ? "Detección automática"
+                        : metodoDeteccion,
                 mensajeEstado
             });
         }
