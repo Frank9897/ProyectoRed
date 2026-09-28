@@ -405,21 +405,59 @@ Esta clasificación sirve como información auxiliar para el técnico y no cambi
 
 La puerta de enlace IPv4 ya no es un requisito para ejecutar la detección.
 
-Cuando la interfaz Ethernet tiene una IPv4 y una puerta de enlace, ProyectoRed mantiene el mecanismo de consulta ARP dirigida al gateway que ya estaba funcionando.
+Cuando la interfaz Ethernet tiene una IPv4 y una puerta de enlace, ProyectoRed realiza una consulta ARP dirigida al gateway para conservar el comportamiento que ya funcionaba con routers/modems.
 
-Cuando no existe puerta de enlace, o la interfaz todavía no tiene una IPv4, ProyectoRed inicia igualmente la captura y realiza un descubrimiento pasivo durante una ventana limitada.
+Cuando no existe puerta de enlace, o la interfaz no tiene una IPv4, ProyectoRed inicia igualmente la captura durante una ventana limitada.
 
-En esa captura puede obtener información mediante:
+La estrategia de descubrimiento en una conexión directa prioriza protocolos de capa 2 que identifican al vecino del puerto:
 
 ~~~text
-ARP
 LLDP
 CDP
 ~~~
 
-Además, cuando un anuncio LLDP contiene un **Management Address TLV** con una IPv4, esa dirección puede asociarse a la MAC de origen del anuncio. Esto permite identificar dispositivos administrables que anuncian su dirección de gestión aunque la PC no tenga una puerta de enlace configurada.
+Si el dispositivo anuncia LLDP, ProyectoRed utiliza la MAC de origen del anuncio y, cuando el anuncio contiene un **Management Address TLV** IPv4, también obtiene la IP de gestión.
 
-La captura sin puerta de enlace no garantiza encontrar cualquier dispositivo silencioso. Sin una dirección conocida o un protocolo de descubrimiento emitido por el dispositivo, no existe una forma universal de identificar su IP sin realizar un descubrimiento activo de la red. ProyectoRed no convierte esta situación en un escaneo automático de toda la subred.
+CDP permite identificar el vecino Cisco mediante su MAC y el TLV Device-ID.
+
+Cuando no aparece LLDP/CDP, ProyectoRed puede obtener una respuesta ARP pasiva si el dispositivo emite tráfico visible para la interfaz. Para evitar tomar tráfico unicast ajeno como si fuera el objetivo, la captura no necesita trabajar en modo promiscuo para este escenario.
+
+### Detección manual
+
+La interfaz incluye una sección **Detección manual** con:
+
+~~~text
+IP del dispositivo
+IP local de prueba
+~~~
+
+La primera dirección es la IP concreta que se desea consultar.
+
+Cuando se completa, ProyectoRed envía una **única consulta ARP dirigida a esa IP**. No realiza un escaneo de la subred ni prueba automáticamente miles de direcciones.
+
+La IP local de prueba es opcional. Solo se utiliza como dirección de origen de la consulta ARP cuando la interfaz de la PC no tiene una IPv4 configurada.
+
+Esta configuración manual **no modifica la configuración de Windows**.
+
+Por lo tanto, si el técnico conoce la IP fija/default del dispositivo, puede hacer una consulta puntual incluso cuando la PC todavía no tiene IPv4 o puerta de enlace.
+
+La captura sin una IP objetivo conocida no puede garantizar la identificación de un dispositivo completamente silencioso. El enlace físico puede estar activo aunque el equipo remoto no anuncie LLDP/CDP ni genere tráfico ARP durante la ventana de captura.
+
+Además, la interfaz diferencia entre:
+
+~~~text
+Enlace UTP activo
+    +
+Dispositivo identificado
+
+y
+
+Enlace UTP activo
+    +
+Sin información identificable todavía
+~~~
+
+Esto evita mostrar **“no hay dispositivo conectado”** cuando en realidad el enlace Ethernet está activo pero no se obtuvo una identidad de capa 2/3.
 
 ## Próximo paso
 
