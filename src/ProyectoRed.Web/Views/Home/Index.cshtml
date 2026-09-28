@@ -56,16 +56,17 @@
                 <div class="border rounded p-3 mb-3">
 
                     <h3 class="h6 mb-2">
-                        Detección manual
+                        Detección automática y manual
                     </h3>
 
                     <p class="small text-muted mb-3">
-                        Úsela cuando el dispositivo tiene una IP conocida
-                        pero la PC no tiene IPv4, DHCP o puerta de enlace.
+                        Deje la IP vacía para iniciar la búsqueda automática.
+                        ProyectoRed escucha LLDP/CDP, tráfico IPv4/ARP y realiza
+                        sondas ARP sobre la red local y direcciones habituales.
                         No modifica la configuración de Windows.
                     </p>
 
-                    <div class="mb-3">
+                    <div class="mb-0">
 
                         <label
                             for="direccionIpObjetivo"
@@ -80,28 +81,8 @@
                             placeholder="Ej. 192.168.0.1">
 
                         <div class="form-text">
-                            La consulta ARP manual se realizará únicamente contra esta IP.
-                        </div>
-
-                    </div>
-
-                    <div class="mb-0">
-
-                        <label
-                            for="direccionIpLocalManual"
-                            class="form-label">
-                            IP local de prueba
-                        </label>
-
-                        <input
-                            id="direccionIpLocalManual"
-                            type="text"
-                            class="form-control"
-                            placeholder="Ej. 192.168.0.2">
-
-                        <div class="form-text">
-                            Opcional. Se usa como IP de origen de la consulta ARP
-                            si la interfaz no tiene una IPv4 configurada.
+                            Opcional. Si se completa, se realiza una única consulta ARP
+                            contra esa IPv4 y no se ejecuta el sondeo automático.
                         </div>
 
                     </div>
@@ -161,6 +142,11 @@
                             <p class="mb-3">
                                 <strong>Nombre:</strong>
                                 <span id="resultadoNombre">No disponible</span>
+                            </p>
+
+                            <p class="mb-3">
+                                <strong>Método:</strong>
+                                <span id="resultadoMetodo">No disponible</span>
                             </p>
 
                             <div id="accesoDispositivo" class="mt-3">
