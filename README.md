@@ -183,6 +183,7 @@ Ya se encuentran implementados:
 - Filtro por OperationalStatus.Up.
 - Filtro por NetworkInterfaceType.Ethernet.
 - Detección de interfaz física específica para Linux y Windows.
+- Clasificación básica de la IPv4 detectada sin agregar campos al modelo DispositivoDetectado.
 - Registro mediante inyección de dependencias.
 - Captura de paquetes con SharpPcap.
 - Análisis Ethernet con PacketDotNet.
@@ -364,6 +365,41 @@ La propuesta deja la puerta de enlace vacía porque el objetivo de esta configur
 También se consulta si la interfaz utiliza DHCP. Si está en DHCP, el mensaje indica que se debe comprobar que exista un servidor DHCP que entregue una dirección de la misma red. Si está configurada manualmente, se informa de que puede ser necesario cambiar temporalmente la configuración IPv4.
 
 Esta funcionalidad no realiza modificaciones automáticas en la configuración de red de Windows.
+
+## Clasificación de IPv4
+
+La información principal de ProyectoRed sigue siendo:
+
+~~~text
+IP + MAC + Nombre
+~~~
+
+La clasificación de la dirección no se guarda en el modelo DispositivoDetectado. Se calcula al momento de mostrar el resultado mediante ClasificadorDireccionService.
+
+Las categorías básicas implementadas son:
+
+~~~text
+IPv4 privada
+IPv4 Link-Local
+IPv4 pública/global
+IPv4 de loopback
+IPv4 multicast
+IPv4 no especificada
+~~~
+
+Ejemplos:
+
+~~~text
+10.0.1.1       -> IPv4 privada
+192.168.0.1    -> IPv4 privada
+169.254.10.20  -> IPv4 Link-Local
+8.8.8.8        -> IPv4 pública/global
+127.0.0.1      -> IPv4 de loopback
+224.0.0.1      -> IPv4 multicast
+0.0.0.0        -> IPv4 no especificada
+~~~
+
+Esta clasificación sirve como información auxiliar para el técnico y no cambia el objetivo principal del proyecto: descubrir la IPv4 del dispositivo conectado por UTP y facilitar el acceso a su interfaz cuando sea posible.
 
 ## Próximo paso
 
