@@ -180,6 +180,7 @@ Ya se encuentran implementados:
 - Página inicial personalizada.
 - Modelo Models/InterfazRed.cs.
 - Servicio Services/InterfazRedService.cs.
+- Servicio Services/AccesoDispositivoService.cs para validar acceso a la interfaz del dispositivo.
 - Registro del servicio mediante inyección de dependencias.
 - Lectura de interfaces mediante NetworkInterface.GetAllNetworkInterfaces().
 - Filtro por estado operativo Up.
@@ -204,6 +205,11 @@ Ya se encuentran implementados:
 - Captura pasiva de MAC e IPv4 del dispositivo remoto cuando aparece tráfico Ethernet/ARP/IPv4.
 - Endpoint de descubrimiento desde HomeController.
 - Botón Comenzar conectado a la detección desde la interfaz web.
+- Botón para abrir la interfaz web del dispositivo detectado.
+- Endpoint Home/AccesoDispositivo.
+- Comparación de red IPv4 mediante IP y máscara.
+- Consulta de si la interfaz utiliza DHCP.
+- Generación de una sugerencia temporal de configuración IPv4 manual.
 - Perfil de publicación Windows x64 self-contained + single-file.
 - Script publicar-windows.bat.
 
@@ -270,6 +276,44 @@ No incorporar todavía:
 - historial;
 - topología;
 - mapas.
+
+## Acceso a la interfaz del dispositivo
+
+Cuando el resultado de descubrimiento contiene una IPv4, la vista permite intentar abrir la interfaz web del dispositivo.
+
+El flujo es:
+
+~~~text
+Vista
+ |
+ | GET /Home/AccesoDispositivo
+ v
+HomeController
+ |
+ v
+AccesoDispositivoService
+ |
+ +--> obtiene IPv4 y máscara de la interfaz seleccionada
+ +--> consulta si DHCP está habilitado
+ +--> compara la red de la PC con la red del dispositivo
+ |
+ +--> misma red: permite abrir http://IP
+ |
+ +--> red diferente: informa la situación y muestra
+      una configuración IPv4 manual temporal
+~~~
+
+La comparación se realiza mediante:
+
+~~~text
+(IPPC AND Mascara) == (IPDispositivo AND Mascara)
+~~~
+
+No se cambia automáticamente la configuración de red del sistema.
+
+Cuando la interfaz usa DHCP y las redes no coinciden, el mensaje recomienda comprobar el servidor DHCP antes de recurrir a una configuración manual. Cuando la interfaz está configurada manualmente, se indica que puede ser necesario cambiar temporalmente la IPv4.
+
+La configuración sugerida toma como referencia la máscara IPv4 de la PC. La puerta de enlace queda vacía porque el objetivo es acceder localmente al dispositivo.
 
 ## Próximo paso inmediato
 
