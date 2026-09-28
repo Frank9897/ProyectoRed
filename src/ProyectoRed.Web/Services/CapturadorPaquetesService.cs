@@ -385,6 +385,29 @@ public class CapturadorPaquetesService
             bool busquedaManual =
                 !string.IsNullOrWhiteSpace(direccionIPObjetivo);
 
+            if (!busquedaManual)
+            {
+                // Fase 1: escuchamos sin enviar nada todavía. La mayoría
+                // de los switches administrables emiten su primer anuncio
+                // LLDP/CDP apenas detectan el enlace activo (no hace
+                // falta esperar el ciclo periódico completo de 30-60s),
+                // así que esta ventana corta suele alcanzar. Si el
+                // vecino se identifica acá, es una detección confirmada
+                // de un solo salto: no puede tratarse de otro equipo
+                // más allá en la red, porque LLDP/CDP nunca se reenvían.
+                await EsperarCondicionAsync(
+                    () => vecinoDirectoDetectado ||
+                          !string.IsNullOrWhiteSpace(
+                              resultado.DireccionIP),
+                    TimeSpan.FromSeconds(6));
+
+                if (vecinoDirectoDetectado)
+                {
+                    Console.WriteLine(
+                        "Vecino directo confirmado por LLDP/CDP antes de recurrir a ARP.");
+                }
+            }
+
             List<IPAddress> objetivosArp =
                 busquedaManual
                     ? new List<IPAddress>
@@ -411,41 +434,61 @@ public class CapturadorPaquetesService
                     ConvertirIPv4(objetivo));
             }
 
-            // La captura ya está activa; primero escuchamos y después
-            // enviamos las sondas para no perder una respuesta rápida.
-            Console.WriteLine(
-                busquedaManual
-                    ? $"Detección dirigida iniciada para {direccionIPObjetivo}."
-                    : $"Detección automática iniciada. Sondas ARP: {objetivosArpActivos.Count}.");
-
-            foreach (IPAddress objetivo in objetivosArp)
+            // Si ya tenemos IP resuelta por LLDP/CDP en la fase 1, no
+            // hace falta ningún ARP: ya sabemos que es el vecino directo.
+            // Si el vecino se identificó pero todavía falta su IP (por
+            // ejemplo, LLDP sin Management Address), sí conviene lanzar
+            // el ARP: el filtro por MAC ya vigente solo va a aceptar la
+            // respuesta que venga de esa misma MAC, así que sigue siendo
+            // seguro aunque el ARP llegue hasta el gateway u otros
+            // equipos. Si no hubo ningún vecino directo, el ARP pasa a
+            // ser el único recurso disponible y el resultado deja de
+            // tener la misma garantía de "un solo salto": lo indicamos
+            // dejando "ARP" como único origen en UltimoOrigenDeteccion,
+            // para que la interfaz pueda avisarle al técnico que es una
+            // IP alcanzable en la red, no necesariamente el dispositivo
+            // conectado directamente al cable.
+            if (string.IsNullOrWhiteSpace(resultado.DireccionIP))
             {
-                if (string.IsNullOrWhiteSpace(
-                        resultado.DireccionIP) &&
-                    EsDireccionValidaArp(
-                        objetivo,
-                        direccionIpLocal))
-                {
-                    EnviarConsultaArp(
-                        dispositivoInyeccion,
-                        direccionMacLocal,
-                        direccionMacBroadcast,
-                        direccionMacVacia,
-                        objetivo,
-                        direccionOrigenArp);
+                Console.WriteLine(
+                    busquedaManual
+                        ? $"Detección dirigida iniciada para {direccionIPObjetivo}."
+                        : $"Sin confirmación LLDP/CDP: recurriendo a ARP. Sondas: {objetivosArpActivos.Count}.");
 
-                    if (busquedaManual)
+                foreach (IPAddress objetivo in objetivosArp)
+                {
+                    if (string.IsNullOrWhiteSpace(
+                            resultado.DireccionIP) &&
+                        EsDireccionValidaArp(
+                            objetivo,
+                            direccionIpLocal))
                     {
-                        Console.WriteLine(
-                            $"Consulta ARP enviada para: {objetivo}");
+                        EnviarConsultaArp(
+                            dispositivoInyeccion,
+                            direccionMacLocal,
+                            direccionMacBroadcast,
+                            direccionMacVacia,
+                            objetivo,
+                            direccionOrigenArp);
+
+                        if (busquedaManual)
+                        {
+                            Console.WriteLine(
+                                $"Consulta ARP enviada para: {objetivo}");
+                        }
+                    }
+
+                    if (!string.IsNullOrWhiteSpace(
+                            resultado.DireccionIP))
+                    {
+                        break;
                     }
                 }
-
-                if (!string.IsNullOrWhiteSpace(
-                        resultado.DireccionIP))
-                {
-                    break;
-                }
+            }
+            else
+            {
+                Console.WriteLine(
+                    "IP ya resuelta por LLDP/CDP; se omite el escaneo ARP.");
             }
 
             if (objetivosArpActivos.Count == 0)
@@ -1207,6 +1250,20 @@ public class CapturadorPaquetesService
                 valor);
 
         return new IPAddress(bytes);
+    }
+
+    private async Task EsperarCondicionAsync(
+        Func<bool> condicion,
+        TimeSpan tiempoMaximo)
+    {
+        DateTime limite =
+            DateTime.UtcNow.Add(tiempoMaximo);
+
+        while (!condicion() &&
+               DateTime.UtcNow < limite)
+        {
+            await Task.Delay(25);
+        }
     }
 
     private async Task EsperarResultadoAsync(
