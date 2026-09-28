@@ -804,7 +804,8 @@ public class CapturadorPaquetesService
             // de direcciones y luego cada dirección contiene protocolo,
             // longitud del protocolo, valor del protocolo, longitud de
             // dirección y los bytes de la dirección.
-            if (tipoTlv == 0x0002 &&
+            if ((tipoTlv == 0x0002 ||
+                 tipoTlv == 0x0016) &&
                 longitudValor >= 4)
             {
                 direccionGestion =
