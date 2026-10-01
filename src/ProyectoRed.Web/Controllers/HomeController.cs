@@ -84,7 +84,9 @@ public class HomeController : Controller
 
             string metodoDeteccion =
                 TraducirMetodoDeteccion(
-                    _capturadorPaquetesService.UltimoOrigenDeteccion);
+                    _capturadorPaquetesService.UltimoOrigenDeteccion,
+                    !string.IsNullOrWhiteSpace(
+                        resultado.DireccionIP));
 
             if (string.IsNullOrWhiteSpace(resultado.DireccionMac))
             {
@@ -101,8 +103,14 @@ public class HomeController : Controller
                 else
                 {
                     mensajeEstado =
-                        "El enlace UTP está activo, pero no se obtuvo una respuesta del dispositivo " +
-                        "mediante LLDP, CDP, IPv4 o ARP durante la búsqueda automática.";
+                        string.Equals(
+                            _capturadorPaquetesService.UltimoOrigenDeteccion,
+                            "ARP",
+                            StringComparison.OrdinalIgnoreCase)
+                            ? "El enlace UTP está activo y se observaron respuestas ARP, " +
+                              "pero no hubo un candidato único y estable para identificar el dispositivo."
+                            : "El enlace UTP está activo, pero no se obtuvo una respuesta del dispositivo " +
+                              "mediante LLDP, CDP, STP o ARP durante la búsqueda automática.";
                 }
             }
             else if (string.IsNullOrWhiteSpace(resultado.DireccionIP))
@@ -190,7 +198,8 @@ public class HomeController : Controller
     }
 
     private string TraducirMetodoDeteccion(
-        string origen)
+        string origen,
+        bool tieneResultado)
     {
         if (string.IsNullOrWhiteSpace(origen))
         {
@@ -215,7 +224,9 @@ public class HomeController : Controller
                 "ARP",
                 StringComparison.OrdinalIgnoreCase))
         {
-            return "ARP (sin confirmación de vecino directo)";
+            return tieneResultado
+                ? "ARP (sin confirmación de vecino directo)"
+                : "ARP (candidatos múltiples o sin confirmación)";
         }
 
         return origen;
