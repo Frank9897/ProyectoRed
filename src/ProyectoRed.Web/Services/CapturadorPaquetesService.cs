@@ -23,9 +23,11 @@ public class CapturadorPaquetesService
 
     public int UltimaCantidadSondasArp { get; private set; }
 
-    private const int TamanoLoteArp = 256;
+    private const int TamanoLoteArp = 65_000;
 
-    private const int PausaLoteArpMs = 10;
+    // 5.000 solicitudes ARP por segundo como máximo en la cola
+    // nativa. Evitamos inundar el switch/Npcap y perder respuestas.
+    private const int IntervaloSondaArpMicrosegundos = 200;
 
     public CapturadorPaquetesService(
         HistorialDispositivosService historialDispositivosService)
@@ -429,7 +431,13 @@ public class CapturadorPaquetesService
             CuandoLlegaPaquete;
 
         dispositivoSeleccionado.Open(
-            DeviceModes.Promiscuous);
+            new DeviceConfiguration
+            {
+                Mode =
+                    DeviceModes.Promiscuous,
+                Immediate = true,
+                ReadTimeout = 100
+            });
 
         Console.WriteLine(
             $"Captura iniciada en: {dispositivoSeleccionado.Name}");
@@ -1740,6 +1748,9 @@ public class CapturadorPaquetesService
             int cantidadEnviada =
                 0;
 
+            long tiempoMicrosegundos =
+                0;
+
             using SendQueue cola =
                 new SendQueue(
                     tamanoCola);
@@ -1759,21 +1770,39 @@ public class CapturadorPaquetesService
                         direccionOrigenArp,
                         objetivo);
 
+                int segundos =
+                    (int)(
+                        tiempoMicrosegundos /
+                        1_000_000L);
+
+                int microsegundos =
+                    (int)(
+                        tiempoMicrosegundos %
+                        1_000_000L);
+
                 if (!cola.Add(
-                        tramaArp))
+                        tramaArp,
+                        segundos,
+                        microsegundos))
                 {
                     TransmitirColaArp(
                         dispositivoPcap,
                         cola,
-                        semaforoEnvioArp);
+                        semaforoEnvioArp,
+                        SendQueueTransmitModes.Synchronized);
 
                     if (!cola.Add(
-                            tramaArp))
+                            tramaArp,
+                            segundos,
+                            microsegundos))
                     {
                         throw new InvalidOperationException(
-                            "No se pudo agregar una consulta ARP a la cola de transmisión.");
+                            "No se pudo agregar la consulta ARP a la cola de transmisión.");
                     }
                 }
+
+                tiempoMicrosegundos +=
+                    IntervaloSondaArpMicrosegundos;
 
                 cantidadEnviada++;
             }
@@ -1783,16 +1812,18 @@ public class CapturadorPaquetesService
                 TransmitirColaArp(
                     dispositivoPcap,
                     cola,
-                    semaforoEnvioArp);
+                    semaforoEnvioArp,
+                    SendQueueTransmitModes.Synchronized);
             }
 
             Console.WriteLine(
-                $"Sondeo ARP optimizado {ronda}/{cantidadRondas}: " +
-                $"{cantidadEnviada} solicitudes en cola.");
+                $"Sondeo ARP optimizado y regulado " +
+                $"{ronda}/{cantidadRondas}: " +
+                $"{cantidadEnviada} solicitudes.");
 
             if (ronda < cantidadRondas)
             {
-                Thread.Sleep(150);
+                Thread.Sleep(250);
             }
         }
     }
@@ -1800,7 +1831,8 @@ public class CapturadorPaquetesService
     private void TransmitirColaArp(
         PcapDevice dispositivoPcap,
         SendQueue cola,
-        SemaphoreSlim semaforoEnvioArp)
+        SemaphoreSlim semaforoEnvioArp,
+        SendQueueTransmitModes modo)
     {
         if (cola.CurrentLength == 0)
         {
@@ -1814,7 +1846,7 @@ public class CapturadorPaquetesService
             int bytesEnviados =
                 cola.Transmit(
                     dispositivoPcap,
-                    SendQueueTransmitModes.Normal);
+                    modo);
 
             if (bytesEnviados <= 0)
             {
@@ -1910,33 +1942,29 @@ public class CapturadorPaquetesService
         int cantidadLinkLocal,
         int cantidadRespaldo)
     {
-        // La cola nativa de Npcap evita el coste de una llamada de
-        // transmisión individual por cada ARP. La estimación es
-        // deliberadamente conservadora: incluye el tiempo de la fase
-        // LLDP/CDP/STP/EDP y un margen para recibir respuestas.
-        long mayorCantidad =
+        double solicitudesTotales =
             Math.Max(
                 cantidadRedLocal,
                 Math.Max(
                     cantidadLinkLocal,
                     cantidadRespaldo));
 
-        if (mayorCantidad == 0)
+        if (solicitudesTotales <= 0)
         {
             return 6500;
         }
 
-        long margenEnvio =
-            mayorCantidad >= 60000
-                ? 1500
-                : mayorCantidad >= 2000
-                    ? 1000
-                    : 500;
+        double segundosPorRonda =
+            solicitudesTotales *
+            IntervaloSondaArpMicrosegundos /
+            1_000_000.0;
 
         return
-            6000 +
-            margenEnvio +
-            500;
+            6000L +
+            (long)(
+                segundosPorRonda *
+                1000.0) +
+            500L;
     }
 
     private long EstimarDuracionArpMs(
