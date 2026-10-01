@@ -414,13 +414,15 @@ La puerta de enlace IPv4 ya no es un requisito para ejecutar la detección.
 
 Cuando la interfaz Ethernet tiene una IPv4, ProyectoRed usa esa dirección y su máscara para construir los objetivos ARP. La puerta de enlace, si existe, se agrega como primer candidato, pero ya no es un requisito.
 
-Cuando no existe puerta de enlace o la interfaz no tiene una IPv4, ProyectoRed inicia igualmente la captura y utiliza los protocolos de capa 2 y los rangos de respaldo que sean posibles.
+Cuando no existe puerta de enlace o la interfaz no tiene una IPv4, ProyectoRed inicia igualmente la captura y utiliza los protocolos de capa 2. La búsqueda 169.254/16 se conserva como respaldo ampliado.
 
 La estrategia de descubrimiento en una conexión directa prioriza protocolos de capa 2 que identifican al vecino del puerto:
 
 ~~~text
 LLDP
 CDP
+STP/RSTP
+EDP
 ~~~
 
 Si el dispositivo anuncia LLDP, ProyectoRed utiliza la MAC de origen del anuncio y, cuando el anuncio contiene un **Management Address TLV** IPv4, también obtiene la IP de gestión.
