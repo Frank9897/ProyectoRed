@@ -75,12 +75,21 @@ public class AccesoDispositivoService
                 mascaraRed);
 
         string urlInterfaz =
-            await DetectarUrlInterfazAsync(
-                direccionIP);
+            string.Empty;
 
         bool puedeAbrirInterfaz =
-            !string.IsNullOrWhiteSpace(
-                urlInterfaz);
+            false;
+
+        if (mismaRed)
+        {
+            urlInterfaz =
+                await DetectarUrlInterfazAsync(
+                    direccionIP);
+
+            puedeAbrirInterfaz =
+                !string.IsNullOrWhiteSpace(
+                    urlInterfaz);
+        }
 
         EstadoAccesoDispositivo resultado =
             new EstadoAccesoDispositivo
