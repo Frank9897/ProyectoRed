@@ -1657,13 +1657,15 @@ public class CapturadorPaquetesService
         if (OperatingSystem.IsWindows() &&
             dispositivoInyeccion is PcapDevice dispositivoPcap)
         {
-            SondearArpConCola(
-                dispositivoPcap,
-                objetivos,
-                direccionIpLocal,
-                direccionMacLocal,
-                direccionOrigenArp,
-                cantidadRondas);
+            await Task.Run(
+                () => SondearArpConCola(
+                    dispositivoPcap,
+                    objetivos,
+                    direccionIpLocal,
+                    direccionMacLocal,
+                    direccionOrigenArp,
+                    cantidadRondas,
+                    semaforoEnvioArp));
 
             return;
         }
@@ -1725,7 +1727,8 @@ public class CapturadorPaquetesService
         IPAddress direccionIpLocal,
         PhysicalAddress direccionMacLocal,
         IPAddress direccionOrigenArp,
-        int cantidadRondas)
+        int cantidadRondas,
+        SemaphoreSlim semaforoEnvioArp)
     {
         const int tamanoCola =
             8 * 1024 * 1024;
@@ -1737,64 +1740,50 @@ public class CapturadorPaquetesService
             int cantidadEnviada =
                 0;
 
-            SendQueue cola =
+            using SendQueue cola =
                 new SendQueue(
                     tamanoCola);
 
-            try
+            foreach (IPAddress objetivo in objetivos)
             {
-                foreach (IPAddress objetivo in objetivos)
+                if (!EsDireccionValidaArp(
+                        objetivo,
+                        direccionIpLocal))
                 {
-                    if (!EsDireccionValidaArp(
-                            objetivo,
-                            direccionIpLocal))
-                    {
-                        continue;
-                    }
+                    continue;
+                }
 
-                    byte[] tramaArp =
-                        CrearSolicitudArpBytes(
-                            direccionMacLocal,
-                            direccionOrigenArp,
-                            objetivo);
+                byte[] tramaArp =
+                    CrearSolicitudArpBytes(
+                        direccionMacLocal,
+                        direccionOrigenArp,
+                        objetivo);
+
+                if (!cola.Add(
+                        tramaArp))
+                {
+                    TransmitirColaArp(
+                        dispositivoPcap,
+                        cola,
+                        semaforoEnvioArp);
 
                     if (!cola.Add(
                             tramaArp))
                     {
-                        if (cola.CurrentLength > 0)
-                        {
-                            cola.Transmit(
-                                dispositivoPcap,
-                                SendQueueTransmitModes.Normal);
-                        }
-
-                        cola.Dispose();
-
-                        cola =
-                            new SendQueue(
-                                tamanoCola);
-
-                        if (!cola.Add(
-                                tramaArp))
-                        {
-                            throw new InvalidOperationException(
-                                "No se pudo agregar una consulta ARP a la cola de transmisión.");
-                        }
+                        throw new InvalidOperationException(
+                            "No se pudo agregar una consulta ARP a la cola de transmisión.");
                     }
-
-                    cantidadEnviada++;
                 }
 
-                if (cola.CurrentLength > 0)
-                {
-                    cola.Transmit(
-                        dispositivoPcap,
-                        SendQueueTransmitModes.Normal);
-                }
+                cantidadEnviada++;
             }
-            finally
+
+            if (cola.CurrentLength > 0)
             {
-                cola.Dispose();
+                TransmitirColaArp(
+                    dispositivoPcap,
+                    cola,
+                    semaforoEnvioArp);
             }
 
             Console.WriteLine(
@@ -1805,6 +1794,37 @@ public class CapturadorPaquetesService
             {
                 Thread.Sleep(150);
             }
+        }
+    }
+
+    private void TransmitirColaArp(
+        PcapDevice dispositivoPcap,
+        SendQueue cola,
+        SemaphoreSlim semaforoEnvioArp)
+    {
+        if (cola.CurrentLength == 0)
+        {
+            return;
+        }
+
+        semaforoEnvioArp.Wait();
+
+        try
+        {
+            int bytesEnviados =
+                cola.Transmit(
+                    dispositivoPcap,
+                    SendQueueTransmitModes.Normal);
+
+            if (bytesEnviados <= 0)
+            {
+                throw new InvalidOperationException(
+                    "Npcap no pudo transmitir la cola de solicitudes ARP.");
+            }
+        }
+        finally
+        {
+            semaforoEnvioArp.Release();
         }
     }
 
@@ -1819,16 +1839,6 @@ public class CapturadorPaquetesService
         byte[] macLocal =
             direccionMacLocal.GetAddressBytes();
 
-        byte[] macVacia =
-        {
-            0,
-            0,
-            0,
-            0,
-            0,
-            0
-        };
-
         byte[] ipOrigen =
             direccionOrigenArp.AddressFamily ==
                     AddressFamily.InterNetwork
@@ -1838,7 +1848,7 @@ public class CapturadorPaquetesService
         byte[] ipDestino =
             direccionDestino.GetAddressBytes();
 
-        // Ethernet.
+        // Ethernet broadcast.
         for (int indice = 0;
              indice < 6;
              indice++)
@@ -1853,19 +1863,17 @@ public class CapturadorPaquetesService
         trama[12] = 0x08;
         trama[13] = 0x06;
 
-        // ARP.
+        // ARP: Ethernet / IPv4 / request.
         trama[14] = 0x00;
         trama[15] = 0x01;
-
         trama[16] = 0x08;
         trama[17] = 0x00;
-
         trama[18] = 0x06;
         trama[19] = 0x04;
-
         trama[20] = 0x00;
         trama[21] = 0x01;
 
+        // Sender hardware address.
         Array.Copy(
             macLocal,
             0,
@@ -1873,6 +1881,7 @@ public class CapturadorPaquetesService
             22,
             6);
 
+        // Sender protocol address.
         Array.Copy(
             ipOrigen,
             0,
@@ -1880,13 +1889,12 @@ public class CapturadorPaquetesService
             28,
             4);
 
-        Array.Copy(
-            macVacia,
-            0,
-            trama,
-            32,
-            6);
+        // Target hardware address = unknown (00:00:00:00:00:00).
+        // This mantiene el formato estándar de ARP request.
+        // El destino Ethernet se mantiene en broadcast para maximizar
+        // compatibilidad con switches y dispositivos de gestión.
 
+        // Target protocol address.
         Array.Copy(
             ipDestino,
             0,
@@ -1902,31 +1910,33 @@ public class CapturadorPaquetesService
         int cantidadLinkLocal,
         int cantidadRespaldo)
     {
-        const long tiempoPorRondaMs =
-            750;
+        // La cola nativa de Npcap evita el coste de una llamada de
+        // transmisión individual por cada ARP. La estimación es
+        // deliberadamente conservadora: incluye el tiempo de la fase
+        // LLDP/CDP/STP/EDP y un margen para recibir respuestas.
+        long mayorCantidad =
+            Math.Max(
+                cantidadRedLocal,
+                Math.Max(
+                    cantidadLinkLocal,
+                    cantidadRespaldo));
 
-        long redLocal =
-            cantidadRedLocal > 0
-                ? 2L * tiempoPorRondaMs
-                : 0L;
+        if (mayorCantidad == 0)
+        {
+            return 6500;
+        }
 
-        long linkLocal =
-            cantidadLinkLocal > 0
-                ? tiempoPorRondaMs
-                : 0L;
-
-        long respaldo =
-            cantidadRespaldo > 0
-                ? tiempoPorRondaMs
-                : 0L;
+        long margenEnvio =
+            mayorCantidad >= 60000
+                ? 1500
+                : mayorCantidad >= 2000
+                    ? 1000
+                    : 500;
 
         return
-            Math.Max(
-                redLocal,
-                Math.Max(
-                    linkLocal,
-                    respaldo))
-            + 500L;
+            6000 +
+            margenEnvio +
+            500;
     }
 
     private long EstimarDuracionArpMs(
