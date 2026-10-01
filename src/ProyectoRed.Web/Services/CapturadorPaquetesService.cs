@@ -335,9 +335,6 @@ public class CapturadorPaquetesService
                 return;
             }
 
-            uint ipRemota =
-                ConvertirIPv4(arp.SenderProtocolAddress);
-
             if (!string.IsNullOrWhiteSpace(
                     direccionIPObjetivo))
             {
