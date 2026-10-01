@@ -8,7 +8,7 @@ namespace ProyectoRed.Web.Services;
 
 public class AccesoDispositivoService
 {
-    public EstadoAccesoDispositivo Evaluar(
+    public async Task<EstadoAccesoDispositivo> EvaluarAsync(
         string nombreInterfaz,
         string direccionIPDispositivo)
     {
