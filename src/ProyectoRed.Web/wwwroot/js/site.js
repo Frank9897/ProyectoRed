@@ -211,7 +211,7 @@ document.addEventListener("DOMContentLoaded", function () {
         const estimacionInicialMs =
             deteccionManual
                 ? 1500
-                : 12000;
+                : 8000;
 
         tiempoEstimado.textContent =
             "~" +
