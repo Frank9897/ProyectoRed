@@ -1085,10 +1085,27 @@ public class CapturadorPaquetesService
             List<(uint ip, string mac)> directas =
                 coincidencias
                     .GroupBy(candidato => candidato.ip)
+                    .Where(grupo =>
+                        grupo
+                            .Select(candidato => candidato.mac)
+                            .Distinct(
+                                StringComparer.OrdinalIgnoreCase)
+                            .Count() == 1)
                     .Select(grupo => grupo.First())
                     .ToList();
 
-            if (directas.Count == 1)
+            bool existeConflicto =
+                coincidencias
+                    .GroupBy(candidato => candidato.ip)
+                    .Any(grupo =>
+                        grupo
+                            .Select(candidato => candidato.mac)
+                            .Distinct(
+                                StringComparer.OrdinalIgnoreCase)
+                            .Count() > 1);
+
+            if (!existeConflicto &&
+                directas.Count == 1)
             {
                 resultado.DireccionIP =
                     ConvertirAIPv4(
