@@ -34,6 +34,24 @@ document.addEventListener("DOMContentLoaded", function () {
     const resultadoMetodo =
         document.getElementById("resultadoMetodo");
 
+    const tiemposDeteccion =
+        document.getElementById("tiemposDeteccion");
+
+    const tiempoTranscurrido =
+        document.getElementById("tiempoTranscurrido");
+
+    const tiempoEstimado =
+        document.getElementById("tiempoEstimado");
+
+    const faseDeteccion =
+        document.getElementById("faseDeteccion");
+
+    const resultadoTiempo =
+        document.getElementById("resultadoTiempo");
+
+    const resultadoSondasArp =
+        document.getElementById("resultadoSondasArp");
+
     const btnAbrirInterfaz =
         document.getElementById("btnAbrirInterfaz");
 
@@ -182,8 +200,51 @@ document.addEventListener("DOMContentLoaded", function () {
         mensajeAcceso.classList.add("d-none");
         configuracionManual.classList.add("d-none");
 
-        estadoDeteccion.textContent =
-            "Detectando durante unos segundos...";
+        tiemposDeteccion.classList.remove("d-none");
+
+        const inicioDeteccion =
+            performance.now();
+
+        const deteccionManual =
+            direccionIpObjetivo.value.trim().length > 0;
+
+        const estimacionInicialMs =
+            deteccionManual
+                ? 1500
+                : 12000;
+
+        tiempoEstimado.textContent =
+            "~" +
+            (estimacionInicialMs / 1000)
+                .toFixed(0) +
+            " s";
+
+        tiempoTranscurrido.textContent =
+            "0.0 s";
+
+        faseDeteccion.textContent =
+            deteccionManual
+                ? "ARP dirigido"
+                : "LLDP/CDP/STP/EDP";
+
+        const actualizadorTiempo =
+            setInterval(function () {
+                const transcurrido =
+                    performance.now() -
+                    inicioDeteccion;
+
+                tiempoTranscurrido.textContent =
+                    (transcurrido / 1000)
+                        .toFixed(1) +
+                    " s";
+
+                if (!deteccionManual &&
+                    transcurrido >= 6000)
+                {
+                    faseDeteccion.textContent =
+                        "Sondeo ARP";
+                }
+            }, 100);
 
         try {
             const parametros =
@@ -228,6 +289,18 @@ document.addEventListener("DOMContentLoaded", function () {
             const metodoDetectado =
                 datos.metodoDeteccion || "";
 
+            const tiempoRealMs =
+                Number(datos.tiempoTranscurridoMs || 0);
+
+            const tiempoEstimadoMs =
+                Number(datos.tiempoEstimadoMs || 0);
+
+            const cantidadSondas =
+                Number(datos.cantidadSondasArp || 0);
+
+            const faseFinal =
+                datos.faseDeteccion || "";
+
             const tipoDireccionDetectada =
                 datos.tipoDireccionIP || "";
 
@@ -250,6 +323,26 @@ document.addEventListener("DOMContentLoaded", function () {
 
             resultadoMetodo.textContent =
                 metodoDetectado || "Búsqueda automática";
+
+            resultadoTiempo.textContent =
+                tiempoRealMs > 0
+                    ? (tiempoRealMs / 1000).toFixed(2) + " s"
+                    : "No disponible";
+
+            resultadoSondasArp.textContent =
+                cantidadSondas.toLocaleString("es-AR");
+
+            faseDeteccion.textContent =
+                faseFinal || "Finalizada";
+
+            if (tiempoEstimadoMs > 0)
+            {
+                tiempoEstimado.textContent =
+                    "~" +
+                    (tiempoEstimadoMs / 1000)
+                        .toFixed(1) +
+                    " s";
+            }
 
             mensajeAcceso.classList.add("d-none");
             configuracionManual.classList.add("d-none");
@@ -277,6 +370,25 @@ document.addEventListener("DOMContentLoaded", function () {
                 error.message;
         }
         finally {
+            clearInterval(
+                actualizadorTiempo);
+
+            const tiempoFinal =
+                performance.now() -
+                inicioDeteccion;
+
+            tiempoTranscurrido.textContent =
+                (tiempoFinal / 1000).toFixed(1) +
+                " s";
+
+            if (!faseDeteccion.textContent ||
+                faseDeteccion.textContent ===
+                    "Preparando...")
+            {
+                faseDeteccion.textContent =
+                    "Finalizada";
+            }
+
             btnComenzar.disabled = false;
         }
     });
