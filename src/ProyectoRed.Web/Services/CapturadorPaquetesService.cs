@@ -1,6 +1,7 @@
 using PacketDotNet;
 using ProyectoRed.Web.Models;
 using SharpPcap;
+using SharpPcap.LibPcap;
 using System.Linq;
 using System.Net;
 using System.Net.NetworkInformation;
@@ -543,10 +544,15 @@ public class CapturadorPaquetesService
                 busquedaManual
                     ? 1400
                     : 6000 +
-                      EstimarDuracionArpMs(
-                          objetivosArpLocales.Count,
-                          objetivosArpLinkLocal.Count,
-                          objetivosArpRespaldo.Count);
+                      (OperatingSystem.IsWindows()
+                          ? EstimarDuracionArpOptimizadoMs(
+                                objetivosArpLocales.Count,
+                                objetivosArpLinkLocal.Count,
+                                objetivosArpRespaldo.Count)
+                          : EstimarDuracionArpMs(
+                                objetivosArpLocales.Count,
+                                objetivosArpLinkLocal.Count,
+                                objetivosArpRespaldo.Count));
 
             // Si ya tenemos IP resuelta por LLDP/CDP en la fase 1, no
             // hace falta ningún ARP: ya sabemos que es el vecino directo.
@@ -1643,6 +1649,25 @@ public class CapturadorPaquetesService
         int cantidadRondas,
         SemaphoreSlim semaforoEnvioArp)
     {
+        if (objetivos.Count == 0)
+        {
+            return;
+        }
+
+        if (OperatingSystem.IsWindows() &&
+            dispositivoInyeccion is PcapDevice dispositivoPcap)
+        {
+            SondearArpConCola(
+                dispositivoPcap,
+                objetivos,
+                direccionIpLocal,
+                direccionMacLocal,
+                direccionOrigenArp,
+                cantidadRondas);
+
+            return;
+        }
+
         for (int ronda = 1;
              ronda <= cantidadRondas;
              ronda++)
@@ -1677,10 +1702,9 @@ public class CapturadorPaquetesService
 
                 cantidadEnviada++;
 
-                if (cantidadEnviada % TamanoLoteArp == 0)
+                if (cantidadEnviada % 256 == 0)
                 {
-                    await Task.Delay(
-                        PausaLoteArpMs);
+                    await Task.Delay(10);
                 }
             }
 
@@ -1693,6 +1717,208 @@ public class CapturadorPaquetesService
                 await Task.Delay(700);
             }
         }
+    }
+
+    private void SondearArpConCola(
+        PcapDevice dispositivoPcap,
+        List<IPAddress> objetivos,
+        IPAddress direccionIpLocal,
+        PhysicalAddress direccionMacLocal,
+        IPAddress direccionOrigenArp,
+        int cantidadRondas)
+    {
+        const int tamanoCola =
+            8 * 1024 * 1024;
+
+        for (int ronda = 1;
+             ronda <= cantidadRondas;
+             ronda++)
+        {
+            int cantidadEnviada =
+                0;
+
+            using SendQueue cola =
+                new SendQueue(
+                    tamanoCola);
+
+            foreach (IPAddress objetivo in objetivos)
+            {
+                if (!EsDireccionValidaArp(
+                        objetivo,
+                        direccionIpLocal))
+                {
+                    continue;
+                }
+
+                byte[] tramaArp =
+                    CrearSolicitudArpBytes(
+                        direccionMacLocal,
+                        direccionOrigenArp,
+                        objetivo);
+
+                if (!cola.Add(tramaArp))
+                {
+                    cola.Transmit(
+                        dispositivoPcap,
+                        SendQueueTransmitModes.Normal);
+
+                    cola.Dispose();
+
+                    using SendQueue nuevaCola =
+                        new SendQueue(
+                            tamanoCola);
+
+                    nuevaCola.Add(
+                        tramaArp);
+
+                    nuevaCola.Transmit(
+                        dispositivoPcap,
+                        SendQueueTransmitModes.Normal);
+
+                    cantidadEnviada++;
+                    continue;
+                }
+
+                cantidadEnviada++;
+            }
+
+            if (cola.CurrentLength > 0)
+            {
+                cola.Transmit(
+                    dispositivoPcap,
+                    SendQueueTransmitModes.Normal);
+            }
+
+            Console.WriteLine(
+                $"Sondeo ARP optimizado {ronda}/{cantidadRondas}: " +
+                $"{cantidadEnviada} solicitudes en cola.");
+
+            if (ronda < cantidadRondas)
+            {
+                Thread.Sleep(150);
+            }
+        }
+    }
+
+    private byte[] CrearSolicitudArpBytes(
+        PhysicalAddress direccionMacLocal,
+        IPAddress direccionOrigenArp,
+        IPAddress direccionDestino)
+    {
+        byte[] trama =
+            new byte[60];
+
+        byte[] macLocal =
+            direccionMacLocal.GetAddressBytes();
+
+        byte[] macVacia =
+        {
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+        };
+
+        byte[] ipOrigen =
+            direccionOrigenArp.AddressFamily ==
+                    AddressFamily.InterNetwork
+                ? direccionOrigenArp.GetAddressBytes()
+                : new byte[] { 0, 0, 0, 0 };
+
+        byte[] ipDestino =
+            direccionDestino.GetAddressBytes();
+
+        // Ethernet.
+        for (int indice = 0;
+             indice < 6;
+             indice++)
+        {
+            trama[indice] =
+                0xFF;
+
+            trama[6 + indice] =
+                macLocal[indice];
+        }
+
+        trama[12] = 0x08;
+        trama[13] = 0x06;
+
+        // ARP.
+        trama[14] = 0x00;
+        trama[15] = 0x01;
+
+        trama[16] = 0x08;
+        trama[17] = 0x00;
+
+        trama[18] = 0x06;
+        trama[19] = 0x04;
+
+        trama[20] = 0x00;
+        trama[21] = 0x01;
+
+        Array.Copy(
+            macLocal,
+            0,
+            trama,
+            22,
+            6);
+
+        Array.Copy(
+            ipOrigen,
+            0,
+            trama,
+            28,
+            4);
+
+        Array.Copy(
+            macVacia,
+            0,
+            trama,
+            32,
+            6);
+
+        Array.Copy(
+            ipDestino,
+            0,
+            trama,
+            38,
+            4);
+
+        return trama;
+    }
+
+    private long EstimarDuracionArpOptimizadoMs(
+        int cantidadRedLocal,
+        int cantidadLinkLocal,
+        int cantidadRespaldo)
+    {
+        const long tiempoPorRondaMs =
+            750;
+
+        long redLocal =
+            cantidadRedLocal > 0
+                ? 2L * tiempoPorRondaMs
+                : 0L;
+
+        long linkLocal =
+            cantidadLinkLocal > 0
+                ? tiempoPorRondaMs
+                : 0L;
+
+        long respaldo =
+            cantidadRespaldo > 0
+                ? tiempoPorRondaMs
+                : 0L;
+
+        return
+            Math.Max(
+                redLocal,
+                Math.Max(
+                    linkLocal,
+                    respaldo))
+            + 500L;
     }
 
     private long EstimarDuracionArpMs(
