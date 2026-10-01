@@ -133,8 +133,8 @@ public class CapturadorPaquetesService
         HashSet<uint> objetivosArpActivos =
             new HashSet<uint>();
 
-        Dictionary<uint, HashSet<string>> respuestasArp =
-            new Dictionary<uint, HashSet<string>>();
+        Dictionary<uint, Dictionary<string, int>> respuestasArp =
+            new Dictionary<uint, Dictionary<string, int>>();
 
         object sincronizacionArp =
             new object();
@@ -353,17 +353,22 @@ public class CapturadorPaquetesService
             {
                 if (!respuestasArp.TryGetValue(
                         ipRemota,
-                        out HashSet<string> macs))
+                        out Dictionary<string, int> macs))
                 {
                     macs =
-                        new HashSet<string>(
+                        new Dictionary<string, int>(
                             StringComparer.OrdinalIgnoreCase);
 
                     respuestasArp[ipRemota] =
                         macs;
                 }
 
-                macs.Add(macFuenteArp);
+                macs.TryGetValue(
+                    macFuenteArp,
+                    out int cantidad);
+
+                macs[macFuenteArp] =
+                    cantidad + 1;
             }
 
             RegistrarOrigen("ARP");
@@ -426,7 +431,8 @@ public class CapturadorPaquetesService
                     : ObtenerObjetivosAutomaticos(
                         direccionIpLocal,
                         mascaraRedLocal,
-                        puertaEnlace);
+                        puertaEnlace,
+                        vecinoDirectoDetectado);
 
             objetivosArpActivos.Clear();
 
@@ -493,22 +499,47 @@ public class CapturadorPaquetesService
                 }
                 else
                 {
-                    foreach (IPAddress objetivo in objetivosArp)
+                    const int cantidadRondas =
+                        2;
+
+                    for (int ronda = 1;
+                         ronda <= cantidadRondas;
+                         ronda++)
                     {
-                        if (!EsDireccionValidaArp(
-                                objetivo,
-                                direccionIpLocal))
+                        int cantidadEnviada = 0;
+
+                        foreach (IPAddress objetivo in objetivosArp)
                         {
-                            continue;
+                            if (!EsDireccionValidaArp(
+                                    objetivo,
+                                    direccionIpLocal))
+                            {
+                                continue;
+                            }
+
+                            EnviarConsultaArp(
+                                dispositivoInyeccion,
+                                direccionMacLocal,
+                                direccionMacBroadcast,
+                                direccionMacVacia,
+                                objetivo,
+                                direccionOrigenArp);
+
+                            cantidadEnviada++;
+
+                            // Evitamos saturar la interfaz/Npcap y damos
+                            // tiempo a los equipos para responder.
+                            if (cantidadEnviada % 32 == 0)
+                            {
+                                await Task.Delay(10);
+                            }
                         }
 
-                        EnviarConsultaArp(
-                            dispositivoInyeccion,
-                            direccionMacLocal,
-                            direccionMacBroadcast,
-                            direccionMacVacia,
-                            objetivo,
-                            direccionOrigenArp);
+                        Console.WriteLine(
+                            $"Sondeo ARP {ronda}/{cantidadRondas}: " +
+                            $"{cantidadEnviada} solicitudes enviadas.");
+
+                        await Task.Delay(700);
                     }
                 }
             }
@@ -1054,102 +1085,73 @@ public class CapturadorPaquetesService
 
     private void ResolverResultadoArpAutomatico(
         DispositivoDetectado resultado,
-        Dictionary<uint, HashSet<string>> respuestasArp,
+        Dictionary<uint, Dictionary<string, int>> respuestasArp,
         bool vecinoDirectoDetectado,
         string macVecinoDirecto)
     {
-        List<(uint ip, string mac)> coincidencias =
-            new List<(uint ip, string mac)>();
+        List<(uint ip, string mac, int cantidad)> candidatos =
+            new List<(uint ip, string mac, int cantidad)>();
 
-        foreach (KeyValuePair<uint, HashSet<string>> respuesta
+        foreach (KeyValuePair<uint, Dictionary<string, int>> respuesta
                  in respuestasArp)
         {
-            foreach (string mac in respuesta.Value)
+            foreach (KeyValuePair<string, int> mac
+                     in respuesta.Value)
             {
                 if (vecinoDirectoDetectado &&
                     !string.Equals(
-                        mac,
+                        mac.Key,
                         macVecinoDirecto,
                         StringComparison.OrdinalIgnoreCase))
                 {
                     continue;
                 }
 
-                coincidencias.Add(
-                    (respuesta.Key, mac));
+                candidatos.Add(
+                    (respuesta.Key,
+                     mac.Key,
+                     mac.Value));
             }
         }
 
-        if (vecinoDirectoDetectado)
+        if (candidatos.Count == 0)
         {
-            List<(uint ip, string mac)> directas =
-                coincidencias
-                    .GroupBy(candidato => candidato.ip)
-                    .Where(grupo =>
-                        grupo
-                            .Select(candidato => candidato.mac)
-                            .Distinct(
-                                StringComparer.OrdinalIgnoreCase)
-                            .Count() == 1)
-                    .Select(grupo => grupo.First())
-                    .ToList();
-
-            bool existeConflicto =
-                coincidencias
-                    .GroupBy(candidato => candidato.ip)
-                    .Any(grupo =>
-                        grupo
-                            .Select(candidato => candidato.mac)
-                            .Distinct(
-                                StringComparer.OrdinalIgnoreCase)
-                            .Count() > 1);
-
-            if (!existeConflicto &&
-                directas.Count == 1)
-            {
-                resultado.DireccionIP =
-                    ConvertirAIPv4(
-                        directas[0].ip)
-                    .ToString();
-
-                resultado.DireccionMac =
-                    directas[0].mac;
-            }
-
             return;
         }
 
-        // Sin una señal de vecino directo no elegimos la primera respuesta.
-        // ARP puede devolver varios equipos de la red. Solo aceptamos una
-        // pareja única IP + MAC para evitar resultados diferentes entre
-        // intentos por culpa del orden en que contestan los equipos.
-        List<(uint ip, string mac)> unicas =
-            coincidencias
-                .GroupBy(
-                    candidato =>
-                        $"{candidato.ip}:{candidato.mac}",
-                    StringComparer.OrdinalIgnoreCase)
-                .Select(grupo => grupo.First())
+        int mayorCantidad =
+            candidatos.Max(
+                candidato => candidato.cantidad);
+
+        List<(uint ip, string mac, int cantidad)> mejores =
+            candidatos
+                .Where(candidato =>
+                    candidato.cantidad == mayorCantidad)
                 .ToList();
 
-        if (unicas.Count != 1)
+        // Requerimos dos respuestas del mismo candidato para reducir
+        // falsos positivos y hacemos que varios intentos produzcan el
+        // mismo resultado en lugar de depender del primero que respondió.
+        if (mayorCantidad < 2 ||
+            mejores.Count != 1)
         {
             return;
         }
 
         resultado.DireccionIP =
             ConvertirAIPv4(
-                unicas[0].ip)
+                mejores[0].ip)
             .ToString();
 
         resultado.DireccionMac =
-            unicas[0].mac;
+            mejores[0].mac;
     }
 
     private List<IPAddress> ObtenerObjetivosAutomaticos(
         IPAddress direccionIpLocal,
         IPAddress mascaraRedLocal,
-        IPAddress puertaEnlace)
+        IPAddress puertaEnlace,
+        bool vecinoDirectoDetectado)
     {
         List<IPAddress> objetivos =
             new List<IPAddress>();
@@ -1238,51 +1240,71 @@ public class CapturadorPaquetesService
             }
         }
 
-        // Candidatos habituales para equipos de administración cuando
-        // la PC está en otra red o todavía no tiene IPv4.
-        AgregarRedComun(
-            objetivos,
-            vistos,
-            direccionIpLocal,
-            "10.0.0.0");
+        // Solo ampliamos a redes comunes cuando ya tenemos una señal
+        // de vecino directo (LLDP/CDP/STP). En ese caso podemos filtrar
+        // las respuestas ARP por la MAC física del vecino y evitar confundir
+        // otros equipos de la red con el dispositivo objetivo.
+        if (vecinoDirectoDetectado)
+        {
+            AgregarRedComun(
+                objetivos,
+                vistos,
+                direccionIpLocal,
+                "10.0.0.0");
 
-        AgregarRedComun(
-            objetivos,
-            vistos,
-            direccionIpLocal,
-            "10.0.1.0");
+            AgregarRedComun(
+                objetivos,
+                vistos,
+                direccionIpLocal,
+                "10.0.1.0");
 
-        AgregarRedComun(
-            objetivos,
-            vistos,
-            direccionIpLocal,
-            "192.168.0.0");
+            AgregarRedComun(
+                objetivos,
+                vistos,
+                direccionIpLocal,
+                "192.168.0.0");
 
-        AgregarRedComun(
-            objetivos,
-            vistos,
-            direccionIpLocal,
-            "192.168.1.0");
+            AgregarRedComun(
+                objetivos,
+                vistos,
+                direccionIpLocal,
+                "192.168.1.0");
 
-        AgregarRedComun(
-            objetivos,
-            vistos,
-            direccionIpLocal,
-            "192.168.100.0");
+            AgregarRedComun(
+                objetivos,
+                vistos,
+                direccionIpLocal,
+                "192.168.100.0");
 
-        AgregarRedComun(
-            objetivos,
-            vistos,
-            direccionIpLocal,
-            "172.16.0.0");
+            AgregarRedComun(
+                objetivos,
+                vistos,
+                direccionIpLocal,
+                "172.16.0.0");
+        }
+        else if (direccionIpLocal == null)
+        {
+            // Sin IPv4 local y sin vecino directo confirmado, solo
+            // probamos direcciones administrativas habituales. No se
+            // recorre 169.254.0.0/16 ni se lanza un barrido enorme.
+            string[] ipHabituales =
+            {
+                "10.0.0.1",
+                "10.0.1.1",
+                "192.168.0.1",
+                "192.168.1.1",
+                "192.168.100.1",
+                "172.16.0.1",
+                "169.254.1.1",
+                "169.254.254.254"
+            };
 
-        // APIPA/link-local: útil cuando el dispositivo está sin DHCP.
-        AgregarRedComun(
-            objetivos,
-            vistos,
-            direccionIpLocal,
-            "169.254.0.0",
-            16);
+            foreach (string ip in ipHabituales)
+            {
+                Agregar(
+                    IPAddress.Parse(ip));
+            }
+        }
 
         return objetivos;
     }
