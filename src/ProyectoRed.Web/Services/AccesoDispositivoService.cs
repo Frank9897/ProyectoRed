@@ -74,6 +74,14 @@ public class AccesoDispositivoService
                 direccionIP,
                 mascaraRed);
 
+        string urlInterfaz =
+            await DetectarUrlInterfazAsync(
+                direccionIP);
+
+        bool puedeAbrirInterfaz =
+            !string.IsNullOrWhiteSpace(
+                urlInterfaz);
+
         EstadoAccesoDispositivo resultado =
             new EstadoAccesoDispositivo
             {
@@ -84,40 +92,43 @@ public class AccesoDispositivoService
                 MascaraRedLocal =
                     mascaraRed.ToString(),
                 UrlInterfaz =
-                    $"http://{direccionIP}",
+                    urlInterfaz,
                 PuedeAbrirInterfaz =
-                    mismaRed
+                    puedeAbrirInterfaz
             };
 
-        if (mismaRed)
+        if (puedeAbrirInterfaz)
         {
             resultado.Mensaje =
-                $"La PC y el dispositivo están en la misma red IPv4. " +
-                $"Se puede abrir la interfaz en {resultado.UrlInterfaz}.";
+                $"Se detectó un servicio web en {urlInterfaz}.";
+        }
+        else if (mismaRed)
+        {
+            resultado.Mensaje =
+                "La PC y el dispositivo parecen pertenecer a la misma " +
+                "subred según la configuración actual, pero no se detectó " +
+                "un servicio web en los puertos habituales 80, 443, 8080 o 8443.";
         }
         else if (usaDhcp)
         {
             resultado.Mensaje =
-                "La PC y el dispositivo están en redes IPv4 diferentes y " +
-                "la interfaz seleccionada está configurada por DHCP. " +
-                "Compruebe que exista un servidor DHCP que entregue una " +
-                "dirección de la misma red que el dispositivo. Si el dispositivo " +
-                "utiliza una IP fija, configure temporalmente la interfaz de la PC " +
-                "de forma manual.";
+                "La PC y el dispositivo no parecen estar en la misma subred " +
+                "con la configuración actual. El dispositivo puede utilizar " +
+                "una IP fija. Configure temporalmente la interfaz Ethernet con " +
+                "la IP y máscara sugeridas y vuelva a probar el acceso.";
         }
         else
         {
             resultado.Mensaje =
-                "La PC y el dispositivo están en redes IPv4 diferentes. " +
-                "La interfaz de la PC está configurada manualmente. " +
-                "Configure temporalmente una dirección de la misma red del " +
-                "dispositivo para poder acceder a su interfaz.";
+                "La PC y el dispositivo no parecen estar en la misma subred " +
+                "con la configuración actual. Configure temporalmente la " +
+                "interfaz Ethernet con la IP y máscara sugeridas y vuelva a " +
+                "probar el acceso.";
         }
 
         resultado.ConfiguracionManual =
             CrearConfiguracionManual(
                 direccionIP,
-                mascaraRed,
                 direccionIPLocal);
 
         return resultado;
@@ -143,56 +154,122 @@ public class AccesoDispositivoService
 
     private ConfiguracionManualRed CrearConfiguracionManual(
         IPAddress direccionIPDispositivo,
-        IPAddress mascaraRed,
         IPAddress direccionIPLocal)
     {
-        uint dispositivo =
-            ConvertirIPv4(direccionIPDispositivo);
+        byte[] bytesDispositivo =
+            direccionIPDispositivo.GetAddressBytes();
 
-        uint local =
-            ConvertirIPv4(direccionIPLocal);
+        int host =
+            bytesDispositivo[3];
 
-        uint mascara =
-            ConvertirIPv4(mascaraRed);
+        int hostSugerido;
 
-        uint red =
-            dispositivo & mascara;
-
-        uint broadcast =
-            red | ~mascara;
-
-        uint[] candidatos =
+        if (host >= 1 &&
+            host <= 253)
         {
-            red + 2,
-            red + 1,
-            red + 3
+            hostSugerido =
+                host + 1;
+        }
+        else
+        {
+            hostSugerido =
+                host - 1;
+
+            if (hostSugerido <= 0)
+            {
+                hostSugerido = 2;
+            }
+        }
+
+        byte[] bytesIpSugerida =
+        {
+            bytesDispositivo[0],
+            bytesDispositivo[1],
+            bytesDispositivo[2],
+            (byte)hostSugerido
         };
 
-        foreach (uint candidato in candidatos)
-        {
-            if (candidato <= red ||
-                candidato >= broadcast ||
-                candidato == dispositivo ||
-                candidato == local)
-            {
-                continue;
-            }
+        IPAddress ipSugerida =
+            new IPAddress(bytesIpSugerida);
 
-            return new ConfiguracionManualRed
-            {
-                DireccionIP =
-                    ConvertirAIPv4(candidato).ToString(),
-                MascaraRed =
-                    mascaraRed.ToString(),
-                PuertaEnlace = string.Empty
-            };
+        if (ipSugerida.Equals(direccionIPLocal))
+        {
+            hostSugerido +=
+                hostSugerido < 253
+                    ? 1
+                    : -2;
+
+            ipSugerida =
+                new IPAddress(
+                    new byte[]
+                    {
+                        bytesDispositivo[0],
+                        bytesDispositivo[1],
+                        bytesDispositivo[2],
+                        (byte)hostSugerido
+                    });
         }
 
         return new ConfiguracionManualRed
         {
+            DireccionIP =
+                ipSugerida.ToString(),
             MascaraRed =
-                mascaraRed.ToString()
+                "255.255.255.0",
+            PuertaEnlace =
+                string.Empty
         };
+    }
+
+    private async Task<string> DetectarUrlInterfazAsync(
+        IPAddress direccionIP)
+    {
+        (int Puerto, string Esquema)[] puertos =
+        {
+            (443, "https"),
+            (80, "http"),
+            (8443, "https"),
+            (8080, "http")
+        };
+
+        foreach ((int Puerto, string Esquema) puerto in puertos)
+        {
+            if (await PuertoWebAbiertoAsync(
+                    direccionIP,
+                    puerto.Puerto))
+            {
+                return
+                    $"{puerto.Esquema}://{direccionIP}" +
+                    (puerto.Puerto is 80 or 443
+                        ? string.Empty
+                        : $":{puerto.Puerto}");
+            }
+        }
+
+        return string.Empty;
+    }
+
+    private async Task<bool> PuertoWebAbiertoAsync(
+        IPAddress direccionIP,
+        int puerto)
+    {
+        using TcpClient cliente =
+            new TcpClient();
+
+        try
+        {
+            await cliente.ConnectAsync(
+                    direccionIP,
+                    puerto)
+                .WaitAsync(
+                    TimeSpan.FromMilliseconds(600));
+
+            return cliente.Connected;
+        }
+        catch
+        {
+            return false;
+        }
     }
 
     private uint ConvertirIPv4(IPAddress direccion)
