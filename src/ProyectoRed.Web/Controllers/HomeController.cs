@@ -149,7 +149,7 @@ public class HomeController : Controller
     }
 
     [HttpGet]
-    public IActionResult AccesoDispositivo(
+    public async Task<IActionResult> AccesoDispositivo(
         string nombreInterfaz,
         string direccionIP)
     {
@@ -166,7 +166,7 @@ public class HomeController : Controller
         try
         {
             EstadoAccesoDispositivo resultado =
-                _accesoDispositivoService.Evaluar(
+                await _accesoDispositivoService.EvaluarAsync(
                     nombreInterfaz,
                     direccionIP);
 
