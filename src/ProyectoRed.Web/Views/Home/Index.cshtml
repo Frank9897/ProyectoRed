@@ -102,6 +102,25 @@
 
                 <div class="mt-4">
 
+                    <div
+                        id="tiemposDeteccion"
+                        class="alert alert-light border d-none mb-3">
+                        <div class="row g-2 small">
+                            <div class="col-12 col-md-4">
+                                <strong>Tiempo transcurrido:</strong>
+                                <span id="tiempoTranscurrido">0.0 s</span>
+                            </div>
+                            <div class="col-12 col-md-4">
+                                <strong>Estimación:</strong>
+                                <span id="tiempoEstimado">--</span>
+                            </div>
+                            <div class="col-12 col-md-4">
+                                <strong>Fase:</strong>
+                                <span id="faseDeteccion">Preparando...</span>
+                            </div>
+                        </div>
+                    </div>
+
                     <p class="mb-3">
                         <strong>Estado:</strong>
                         <span id="estadoDeteccion">Esperando</span>
@@ -147,6 +166,16 @@
                             <p class="mb-3">
                                 <strong>Método:</strong>
                                 <span id="resultadoMetodo">No disponible</span>
+                            </p>
+
+                            <p class="mb-2 small text-muted">
+                                Tiempo real:
+                                <span id="resultadoTiempo">No disponible</span>
+                            </p>
+
+                            <p class="mb-3 small text-muted">
+                                Sondas ARP:
+                                <span id="resultadoSondasArp">0</span>
                             </p>
 
                             <div id="accesoDispositivo" class="mt-3">
