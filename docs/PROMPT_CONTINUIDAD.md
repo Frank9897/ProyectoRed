@@ -383,9 +383,11 @@ La comparación se realiza mediante:
 
 No se cambia automáticamente la configuración de red del sistema.
 
-Cuando la interfaz usa DHCP y las redes no coinciden, el mensaje recomienda comprobar el servidor DHCP antes de recurrir a una configuración manual. Cuando la interfaz está configurada manualmente, se indica que puede ser necesario cambiar temporalmente la IPv4.
+Cuando el acceso web no puede confirmarse con la configuración actual, se propone una configuración temporal de prueba basada en una IP adyacente a la IP detectada y máscara /24. La máscara real del dispositivo no se conoce todavía; la sugerencia no pretende afirmarla como definitiva.
 
-La configuración sugerida toma como referencia la máscara IPv4 de la PC. La puerta de enlace queda vacía porque el objetivo es acceder localmente al dispositivo.
+Antes de ofrecer la guía, el servicio prueba los puertos web habituales 443, 80, 8443 y 8080 y, cuando encuentra uno abierto, genera la URL correspondiente.
+
+La puerta de enlace queda vacía porque el objetivo es acceder localmente al dispositivo.
 
 ## Próximo paso inmediato
 
@@ -401,7 +403,7 @@ La captura actual trabaja durante unos segundos y recopila, cuando existen:
 
 No se debe tomar el primer paquete ARP de una red compartida como identificación automática del dispositivo.
 
-La estrategia automática usa la máscara real de la interfaz cuando existe. No asume una máscara /24 por defecto.
+La estrategia automática usa la máscara real de la interfaz cuando existe para construir la subred local. La configuración temporal de acceso es distinta: propone /24 como primera prueba junto con una IP adyacente a la IP detectada.
 
 ## Forma de desarrollo
 
