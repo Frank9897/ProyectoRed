@@ -365,7 +365,7 @@ http://IP-DEL-DISPOSITIVO
 
 en una nueva pestaña del navegador.
 
-Si están en redes diferentes, ProyectoRed no cambia automáticamente la configuración de Windows. Muestra la IP y la máscara actuales, informa de la situación y, cuando existe una dirección posible, propone una configuración temporal para acceder a un dispositivo con IP fija.
+Si no se puede confirmar el servicio web con la configuración actual, ProyectoRed muestra una configuración temporal de prueba. La IP sugerida se coloca en la misma red de los primeros tres octetos de la IP detectada y se propone máscara /24 como primera prueba. La máscara real del dispositivo no puede conocerse a partir de una respuesta ARP, por lo que la guía se presenta como una configuración temporal, no como la máscara definitiva del equipo.
 
 La propuesta deja la puerta de enlace vacía porque el objetivo de esta configuración temporal es acceder al dispositivo de forma local.
 
@@ -412,9 +412,9 @@ Esta clasificación sirve como información auxiliar para el técnico y no cambi
 
 La puerta de enlace IPv4 ya no es un requisito para ejecutar la detección.
 
-Cuando la interfaz Ethernet tiene una IPv4 y una puerta de enlace, ProyectoRed realiza una consulta ARP dirigida al gateway para conservar el comportamiento que ya funcionaba con routers/modems.
+Cuando la interfaz Ethernet tiene una IPv4, ProyectoRed usa esa dirección y su máscara para construir los objetivos ARP. La puerta de enlace, si existe, se agrega como primer candidato, pero ya no es un requisito.
 
-Cuando no existe puerta de enlace, o la interfaz no tiene una IPv4, ProyectoRed inicia igualmente la captura durante una ventana limitada.
+Cuando no existe puerta de enlace o la interfaz no tiene una IPv4, ProyectoRed inicia igualmente la captura y utiliza los protocolos de capa 2 y los rangos de respaldo que sean posibles.
 
 La estrategia de descubrimiento en una conexión directa prioriza protocolos de capa 2 que identifican al vecino del puerto:
 
