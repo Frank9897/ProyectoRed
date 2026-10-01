@@ -205,9 +205,14 @@ Ya se encuentran implementados:
 - Lectura del Management Address TLV IPv4 de LLDP.
 - Detección de CDP.
 - Lectura de Device-ID y Address TLV IPv4 de CDP.
-- Sondeo ARP automático de la subred local y de rangos de respaldo.
-- Asociación de respuestas ARP con las direcciones que fueron sondeadas.
-- Detección de IPv4 desde tráfico dirigido a la PC.
+- Detección de STP/RSTP como señal de vecino de capa 2.
+- Detección de EDP de Extreme Networks.
+- Lectura de Display y VLAN IP de EDP.
+- Sondeo ARP automático de la subred local.
+- Búsqueda Link-Local 169.254/16 como fase ampliada y paralela al sondeo ARP local.
+- Repetición de solicitudes ARP y consolidación de respuestas para reducir falsos positivos.
+- Detección de IPv4 desde tráfico dirigido a la PC solamente cuando la asociación es útil para el diagnóstico.
+- Indicadores de tiempo transcurrido, estimación y cantidad de sondas ARP.
 - Correspondencia entre la interfaz de .NET y el dispositivo de captura de SharpPcap mediante GUID en Windows.
 - Captura pasiva de MAC e IPv4 del dispositivo remoto cuando aparece tráfico Ethernet/ARP/IPv4.
 - Endpoint de descubrimiento desde HomeController.
@@ -403,7 +408,7 @@ La captura actual trabaja durante unos segundos y recopila, cuando existen:
 
 No se debe tomar el primer paquete ARP de una red compartida como identificación automática del dispositivo.
 
-La estrategia automática usa la máscara real de la interfaz cuando existe para construir la subred local. La configuración temporal de acceso es distinta: propone /24 como primera prueba junto con una IP adyacente a la IP detectada.
+La estrategia automática usa la máscara real de la interfaz cuando existe para construir la subred local. El sondeo de esa red y el sondeo Link-Local 169.254/16 se ejecutan concurrentemente después de la fase inicial de protocolos de capa 2. La configuración temporal de acceso es distinta: propone /24 como primera prueba junto con una IP adyacente a la IP detectada.
 
 ## Forma de desarrollo
 
