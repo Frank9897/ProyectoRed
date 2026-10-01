@@ -23,6 +23,11 @@ public class CapturadorPaquetesService
 
     public int UltimaCantidadSondasArp { get; private set; }
 
+    // Estimación/fallback del envío individual fuera de Windows.
+    private const int TamanoLoteArp = 256;
+
+    private const int PausaLoteArpMs = 10;
+
     // 5.000 solicitudes ARP por segundo como máximo en la cola
     // nativa. Evitamos inundar el switch/Npcap y perder respuestas.
     private const int IntervaloSondaArpMicrosegundos = 200;
