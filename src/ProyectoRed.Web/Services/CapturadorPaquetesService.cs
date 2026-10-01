@@ -471,7 +471,7 @@ public class CapturadorPaquetesService
                 if (vecinoDirectoDetectado)
                 {
                     Console.WriteLine(
-                        "Vecino directo confirmado por LLDP/CDP antes de recurrir a ARP.");
+                        "Vecino directo confirmado por LLDP/CDP/STP/EDP antes de recurrir a ARP.");
                 }
             }
 
@@ -567,7 +567,7 @@ public class CapturadorPaquetesService
                 Console.WriteLine(
                     busquedaManual
                         ? $"Detección dirigida iniciada para {direccionIPObjetivo}."
-                        : $"Sin confirmación LLDP/CDP: recurriendo a ARP. Sondas: {objetivosArpActivos.Count}.");
+                        : $"Sin confirmación LLDP/CDP/STP/EDP: recurriendo a ARP. Sondas: {objetivosArpActivos.Count}.");
 
                 if (busquedaManual)
                 {
@@ -650,7 +650,7 @@ public class CapturadorPaquetesService
             else
             {
                 Console.WriteLine(
-                    "IP resuelta por LLDP/CDP; se omite el escaneo ARP.");
+                    "IP resuelta por LLDP/CDP/STP/EDP; se omite el escaneo ARP.");
             }
 
             if (objetivosArpActivos.Count == 0)
