@@ -1737,56 +1737,64 @@ public class CapturadorPaquetesService
             int cantidadEnviada =
                 0;
 
-            using SendQueue cola =
+            SendQueue cola =
                 new SendQueue(
                     tamanoCola);
 
-            foreach (IPAddress objetivo in objetivos)
+            try
             {
-                if (!EsDireccionValidaArp(
-                        objetivo,
-                        direccionIpLocal))
+                foreach (IPAddress objetivo in objetivos)
                 {
-                    continue;
+                    if (!EsDireccionValidaArp(
+                            objetivo,
+                            direccionIpLocal))
+                    {
+                        continue;
+                    }
+
+                    byte[] tramaArp =
+                        CrearSolicitudArpBytes(
+                            direccionMacLocal,
+                            direccionOrigenArp,
+                            objetivo);
+
+                    if (!cola.Add(
+                            tramaArp))
+                    {
+                        if (cola.CurrentLength > 0)
+                        {
+                            cola.Transmit(
+                                dispositivoPcap,
+                                SendQueueTransmitModes.Normal);
+                        }
+
+                        cola.Dispose();
+
+                        cola =
+                            new SendQueue(
+                                tamanoCola);
+
+                        if (!cola.Add(
+                                tramaArp))
+                        {
+                            throw new InvalidOperationException(
+                                "No se pudo agregar una consulta ARP a la cola de transmisión.");
+                        }
+                    }
+
+                    cantidadEnviada++;
                 }
 
-                byte[] tramaArp =
-                    CrearSolicitudArpBytes(
-                        direccionMacLocal,
-                        direccionOrigenArp,
-                        objetivo);
-
-                if (!cola.Add(tramaArp))
+                if (cola.CurrentLength > 0)
                 {
                     cola.Transmit(
                         dispositivoPcap,
                         SendQueueTransmitModes.Normal);
-
-                    cola.Dispose();
-
-                    using SendQueue nuevaCola =
-                        new SendQueue(
-                            tamanoCola);
-
-                    nuevaCola.Add(
-                        tramaArp);
-
-                    nuevaCola.Transmit(
-                        dispositivoPcap,
-                        SendQueueTransmitModes.Normal);
-
-                    cantidadEnviada++;
-                    continue;
                 }
-
-                cantidadEnviada++;
             }
-
-            if (cola.CurrentLength > 0)
+            finally
             {
-                cola.Transmit(
-                    dispositivoPcap,
-                    SendQueueTransmitModes.Normal);
+                cola.Dispose();
             }
 
             Console.WriteLine(
