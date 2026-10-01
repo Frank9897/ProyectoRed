@@ -14,6 +14,12 @@ public class CapturadorPaquetesService
 
     public string UltimoOrigenDeteccion { get; private set; } = string.Empty;
 
+    public long UltimaDuracionDeteccionMs { get; private set; }
+
+    public long UltimaEstimacionDeteccionMs { get; private set; }
+
+    public string UltimaFaseDeteccion { get; private set; } = string.Empty;
+
     public CapturadorPaquetesService(
         HistorialDispositivosService historialDispositivosService)
     {
@@ -25,6 +31,12 @@ public class CapturadorPaquetesService
         string direccionIPObjetivo = null)
     {
         UltimoOrigenDeteccion = string.Empty;
+        UltimaDuracionDeteccionMs = 0;
+        UltimaEstimacionDeteccionMs = 0;
+        UltimaFaseDeteccion = "Preparando detección";
+
+        System.Diagnostics.Stopwatch cronometro =
+            System.Diagnostics.Stopwatch.StartNew();
 
         CaptureDeviceList dispositivos =
             CaptureDeviceList.Instance;
@@ -403,6 +415,9 @@ public class CapturadorPaquetesService
 
             if (!busquedaManual)
             {
+                UltimaFaseDeteccion =
+                    "Escuchando LLDP/CDP/STP/EDP";
+
                 // Fase 1: escuchamos sin enviar nada todavía. La mayoría
                 // de los switches administrables emiten su primer anuncio
                 // LLDP/CDP apenas detectan el enlace activo (no hace
@@ -421,6 +436,11 @@ public class CapturadorPaquetesService
                         "Vecino directo confirmado por LLDP/CDP antes de recurrir a ARP.");
                 }
             }
+
+            UltimaFaseDeteccion =
+                busquedaManual
+                    ? "Preparando ARP dirigido"
+                    : "Preparando sondeo ARP";
 
             List<IPAddress> objetivosArp =
                 busquedaManual
@@ -502,6 +522,9 @@ public class CapturadorPaquetesService
                     const int cantidadRondas =
                         2;
 
+                    UltimaFaseDeteccion =
+                        "Sondeando ARP la red local y Link-Local";
+
                     for (int ronda = 1;
                          ronda <= cantidadRondas;
                          ronda++)
@@ -556,6 +579,9 @@ public class CapturadorPaquetesService
                     "Se continuará únicamente con LLDP, CDP y captura pasiva.");
             }
 
+            UltimaFaseDeteccion =
+                "Esperando respuestas ARP";
+
             await EsperarResultadoAsync(
                 resultado,
                 TimeSpan.FromSeconds(
@@ -588,6 +614,17 @@ public class CapturadorPaquetesService
 
         UltimoOrigenDeteccion =
             origenDeteccion;
+
+        UltimaFaseDeteccion =
+            string.IsNullOrWhiteSpace(
+                resultado.DireccionIP)
+                ? "Sin resultado"
+                : "Detección finalizada";
+
+        cronometro.Stop();
+
+        UltimaDuracionDeteccionMs =
+            cronometro.ElapsedMilliseconds;
 
         if (string.IsNullOrWhiteSpace(resultado.DireccionMac))
         {
