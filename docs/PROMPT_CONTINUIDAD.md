@@ -209,7 +209,8 @@ Ya se encuentran implementados:
 - Detección de EDP de Extreme Networks.
 - Lectura de Display y VLAN IP de EDP.
 - Sondeo ARP automático de la subred local.
-- Búsqueda Link-Local 169.254/16 como fase ampliada y paralela al sondeo ARP local.
+- Búsqueda Link-Local 169.254/16 como fase ampliada y concurrente con el sondeo local.
+- Transmisión ARP optimizada mediante SendQueue de SharpPcap en Windows cuando Npcap expone la cola nativa.
 - Repetición de solicitudes ARP y consolidación de respuestas para reducir falsos positivos.
 - Detección de IPv4 desde tráfico dirigido a la PC solamente cuando la asociación es útil para el diagnóstico.
 - Indicadores de tiempo transcurrido, estimación y cantidad de sondas ARP.
@@ -408,7 +409,7 @@ La captura actual trabaja durante unos segundos y recopila, cuando existen:
 
 No se debe tomar el primer paquete ARP de una red compartida como identificación automática del dispositivo.
 
-La estrategia automática usa la máscara real de la interfaz cuando existe para construir la subred local. El sondeo de esa red y el sondeo Link-Local 169.254/16 se ejecutan concurrentemente después de la fase inicial de protocolos de capa 2. La configuración temporal de acceso es distinta: propone /24 como primera prueba junto con una IP adyacente a la IP detectada.
+La estrategia automática usa la máscara real de la interfaz cuando existe para construir la subred local. La búsqueda Link-Local mantiene el rango 169.254/16 como respaldo ampliado y no depende de la máscara de la PC. El sondeo de esa red y el sondeo Link-Local 169.254/16 se ejecutan concurrentemente después de la fase inicial de protocolos de capa 2. En Windows, las solicitudes se agrupan con SendQueue para reducir el coste de transmisión individual. SharpPcap documenta que SendQueue puede transmitir una colección de paquetes y que la ruta nativa de Npcap reduce el coste de múltiples envíos individuales. La configuración temporal de acceso es distinta: propone /24 como primera prueba junto con una IP adyacente a la IP detectada.
 
 ## Forma de desarrollo
 
