@@ -20,6 +20,12 @@ public class CapturadorPaquetesService
 
     public string UltimaFaseDeteccion { get; private set; } = string.Empty;
 
+    public int UltimaCantidadSondasArp { get; private set; }
+
+    private const int TamanoLoteArp = 256;
+
+    private const int PausaLoteArpMs = 10;
+
     public CapturadorPaquetesService(
         HistorialDispositivosService historialDispositivosService)
     {
@@ -34,6 +40,7 @@ public class CapturadorPaquetesService
         UltimaDuracionDeteccionMs = 0;
         UltimaEstimacionDeteccionMs = 0;
         UltimaFaseDeteccion = "Preparando detección";
+        UltimaCantidadSondasArp = 0;
 
         System.Diagnostics.Stopwatch cronometro =
             System.Diagnostics.Stopwatch.StartNew();
@@ -226,6 +233,37 @@ public class CapturadorPaquetesService
                 {
                     resultado.DireccionIP =
                         direccionGestionLldp;
+
+                    return;
+                }
+            }
+
+            // EDP es un protocolo propietario de Extreme Networks
+            // encapsulado mediante LLC/SNAP. Cuando está presente,
+            // identifica directamente al switch vecino y puede transportar
+            // una IP de interfaz VLAN.
+            if (IntentarExtraerInformacionEdp(
+                    capturaBruta.Data,
+                    out string macEdp,
+                    out string nombreEdp,
+                    out string direccionGestionEdp))
+            {
+                vecinoDirectoDetectado = true;
+                macVecinoDirecto = macEdp;
+
+                resultado.DireccionMac =
+                    macEdp;
+
+                resultado.Nombre =
+                    nombreEdp ?? string.Empty;
+
+                RegistrarOrigen("EDP");
+
+                if (!string.IsNullOrWhiteSpace(direccionGestionEdp) &&
+                    string.IsNullOrWhiteSpace(direccionIPObjetivo))
+                {
+                    resultado.DireccionIP =
+                        direccionGestionEdp;
 
                     return;
                 }
@@ -442,17 +480,46 @@ public class CapturadorPaquetesService
                     ? "Preparando ARP dirigido"
                     : "Preparando sondeo ARP";
 
-            List<IPAddress> objetivosArp =
-                busquedaManual
-                    ? new List<IPAddress>
-                    {
-                        IPAddress.Parse(direccionIPObjetivo)
-                    }
-                    : ObtenerObjetivosAutomaticos(
+            List<IPAddress> objetivosArpLocales =
+                new List<IPAddress>();
+
+            List<IPAddress> objetivosArpLinkLocal =
+                new List<IPAddress>();
+
+            List<IPAddress> objetivosArpRespaldo =
+                new List<IPAddress>();
+
+            if (busquedaManual)
+            {
+                objetivosArpLocales.Add(
+                    IPAddress.Parse(
+                        direccionIPObjetivo));
+            }
+            else
+            {
+                objetivosArpLocales =
+                    ObtenerObjetivosRedLocal(
                         direccionIpLocal,
                         mascaraRedLocal,
-                        puertaEnlace,
-                        vecinoDirectoDetectado);
+                        puertaEnlace);
+
+                objetivosArpLinkLocal =
+                    ObtenerObjetivosLinkLocal(
+                        direccionIpLocal);
+
+                if (vecinoDirectoDetectado)
+                {
+                    objetivosArpRespaldo =
+                        ObtenerObjetivosRespaldo(
+                            direccionIpLocal);
+                }
+            }
+
+            List<IPAddress> objetivosArp =
+                objetivosArpLocales
+                    .Concat(objetivosArpLinkLocal)
+                    .Concat(objetivosArpRespaldo)
+                    .ToList();
 
             objetivosArpActivos.Clear();
 
@@ -468,6 +535,18 @@ public class CapturadorPaquetesService
                 objetivosArpActivos.Add(
                     ConvertirIPv4(objetivo));
             }
+
+            UltimaCantidadSondasArp =
+                objetivosArpActivos.Count;
+
+            UltimaEstimacionDeteccionMs =
+                busquedaManual
+                    ? 1400
+                    : 6000 +
+                      EstimarDuracionArpMs(
+                          objetivosArpLocales.Count,
+                          objetivosArpLinkLocal.Count,
+                          objetivosArpRespaldo.Count);
 
             // Si ya tenemos IP resuelta por LLDP/CDP en la fase 1, no
             // hace falta ningún ARP: ya sabemos que es el vecino directo.
@@ -519,51 +598,54 @@ public class CapturadorPaquetesService
                 }
                 else
                 {
-                    const int cantidadRondas =
-                        2;
-
                     UltimaFaseDeteccion =
-                        "Sondeando ARP la red local y Link-Local";
+                        "Sondeo ARP paralelo: red local + 169.254/16";
 
-                    for (int ronda = 1;
-                         ronda <= cantidadRondas;
-                         ronda++)
-                    {
-                        int cantidadEnviada = 0;
+                    SemaphoreSlim semaforoEnvioArp =
+                        new SemaphoreSlim(1, 1);
 
-                        foreach (IPAddress objetivo in objetivosArp)
-                        {
-                            if (!EsDireccionValidaArp(
-                                    objetivo,
-                                    direccionIpLocal))
-                            {
-                                continue;
-                            }
+                    Task tareaRedLocal =
+                        SondearArpAsync(
+                            dispositivoInyeccion,
+                            objetivosArpLocales,
+                            direccionIpLocal,
+                            direccionMacLocal,
+                            direccionMacBroadcast,
+                            direccionMacVacia,
+                            direccionOrigenArp,
+                            2,
+                            semaforoEnvioArp);
 
-                            EnviarConsultaArp(
-                                dispositivoInyeccion,
-                                direccionMacLocal,
-                                direccionMacBroadcast,
-                                direccionMacVacia,
-                                objetivo,
-                                direccionOrigenArp);
+                    Task tareaLinkLocal =
+                        SondearArpAsync(
+                            dispositivoInyeccion,
+                            objetivosArpLinkLocal,
+                            direccionIpLocal,
+                            direccionMacLocal,
+                            direccionMacBroadcast,
+                            direccionMacVacia,
+                            direccionOrigenArp,
+                            1,
+                            semaforoEnvioArp);
 
-                            cantidadEnviada++;
+                    Task tareaRespaldo =
+                        SondearArpAsync(
+                            dispositivoInyeccion,
+                            objetivosArpRespaldo,
+                            direccionIpLocal,
+                            direccionMacLocal,
+                            direccionMacBroadcast,
+                            direccionMacVacia,
+                            direccionOrigenArp,
+                            1,
+                            semaforoEnvioArp);
 
-                            // Evitamos saturar la interfaz/Npcap y damos
-                            // tiempo a los equipos para responder.
-                            if (cantidadEnviada % 32 == 0)
-                            {
-                                await Task.Delay(10);
-                            }
-                        }
+                    await Task.WhenAll(
+                        tareaRedLocal,
+                        tareaLinkLocal,
+                        tareaRespaldo);
 
-                        Console.WriteLine(
-                            $"Sondeo ARP {ronda}/{cantidadRondas}: " +
-                            $"{cantidadEnviada} solicitudes enviadas.");
-
-                        await Task.Delay(700);
-                    }
+                    semaforoEnvioArp.Dispose();
                 }
             }
             else
@@ -580,24 +662,21 @@ public class CapturadorPaquetesService
             }
 
             UltimaFaseDeteccion =
-                "Esperando respuestas ARP";
+                "Consolidando respuestas";
 
-            await EsperarResultadoAsync(
-                resultado,
-                TimeSpan.FromSeconds(
-                    busquedaManual
-                        ? 1
-                        : 3));
-
-            if (string.IsNullOrWhiteSpace(
-                    resultado.DireccionIP) &&
-                !busquedaManual)
+            if (!busquedaManual)
             {
-                ResolverResultadoArpAutomatico(
-                    resultado,
-                    respuestasArp,
-                    vecinoDirectoDetectado,
-                    macVecinoDirecto);
+                await Task.Delay(500);
+
+                if (string.IsNullOrWhiteSpace(
+                        resultado.DireccionIP))
+                {
+                    ResolverResultadoArpAutomatico(
+                        resultado,
+                        respuestasArp,
+                        vecinoDirectoDetectado,
+                        macVecinoDirecto);
+                }
             }
         }
         finally
@@ -874,6 +953,164 @@ public class CapturadorPaquetesService
     /// (LLC/SNAP con OUI Cisco 00-00-0C y PID 0x2000).
     /// Extrae Device-ID y la primera dirección IPv4 del Address TLV.
     /// </summary>
+    private bool IntentarExtraerInformacionEdp(
+        byte[] datos,
+        out string macOrigen,
+        out string nombreDispositivo,
+        out string direccionGestion)
+    {
+        macOrigen = null;
+        nombreDispositivo = null;
+        direccionGestion = null;
+
+        if (datos == null ||
+            datos.Length < 54)
+        {
+            return false;
+        }
+
+        int inicioLlc = 14;
+
+        ushort longitudEthernet =
+            (ushort)((datos[12] << 8) | datos[13]);
+
+        // EDP usa Ethernet 802.3 + LLC/SNAP. La etiqueta VLAN,
+        // cuando existe, desplaza el LLC cuatro bytes.
+        if (longitudEthernet == 0x8100 ||
+            longitudEthernet == 0x88A8)
+        {
+            if (datos.Length < 58)
+            {
+                return false;
+            }
+
+            inicioLlc = 18;
+        }
+
+        if (datos[inicioLlc] != 0xAA ||
+            datos[inicioLlc + 1] != 0xAA ||
+            datos[inicioLlc + 2] != 0x03 ||
+            datos[inicioLlc + 3] != 0x00 ||
+            datos[inicioLlc + 4] != 0xE0 ||
+            datos[inicioLlc + 5] != 0x2B ||
+            datos[inicioLlc + 6] != 0x00 ||
+            datos[inicioLlc + 7] != 0xBB)
+        {
+            return false;
+        }
+
+        macOrigen =
+            FormatearMac(
+                new PhysicalAddress(
+                    datos.Skip(6).Take(6).ToArray()));
+
+        int inicioEdp =
+            inicioLlc + 8;
+
+        if (inicioEdp + 16 > datos.Length)
+        {
+            return false;
+        }
+
+        ushort longitudEdp =
+            (ushort)((datos[inicioEdp + 2] << 8) |
+                     datos[inicioEdp + 3]);
+
+        int fin =
+            Math.Min(
+                datos.Length,
+                inicioEdp + longitudEdp);
+
+        if (fin <= inicioEdp + 16)
+        {
+            return false;
+        }
+
+        int posicion =
+            inicioEdp + 16;
+
+        while (posicion + 4 <= fin)
+        {
+            if (datos[posicion] != 0x99)
+            {
+                break;
+            }
+
+            int tipo =
+                datos[posicion + 1];
+
+            int longitud =
+                (datos[posicion + 2] << 8) |
+                datos[posicion + 3];
+
+            if (longitud < 4 ||
+                posicion + longitud > fin)
+            {
+                break;
+            }
+
+            int inicioValor =
+                posicion + 4;
+
+            int longitudValor =
+                longitud - 4;
+
+            // Display TLV: nombre del equipo.
+            if (tipo == 0x01 &&
+                longitudValor > 0 &&
+                string.IsNullOrWhiteSpace(
+                    nombreDispositivo))
+            {
+                nombreDispositivo =
+                    System.Text.Encoding.ASCII.GetString(
+                        datos,
+                        inicioValor,
+                        longitudValor)
+                    .TrimEnd(' ', ' ');
+            }
+
+            // VLAN TLV: contiene la IP de la interfaz VLAN.
+            if (tipo == 0x05 &&
+                longitudValor >= 12)
+            {
+                byte flags =
+                    datos[inicioValor];
+
+                if ((flags & 0x80) != 0)
+                {
+                    IPAddress ip =
+                        new IPAddress(
+                            new byte[]
+                            {
+                                datos[inicioValor + 8],
+                                datos[inicioValor + 9],
+                                datos[inicioValor + 10],
+                                datos[inicioValor + 11]
+                            });
+
+                    if (!ip.Equals(IPAddress.Any) &&
+                        !ip.Equals(
+                            IPAddress.Broadcast))
+                    {
+                        direccionGestion =
+                            ip.ToString();
+
+                        return true;
+                    }
+                }
+            }
+
+            if (tipo == 0x00)
+            {
+                break;
+            }
+
+            posicion += longitud;
+        }
+
+        return true;
+    }
+
     private bool IntentarExtraerInformacionStp(
         byte[] datos,
         out string macOrigen)
@@ -1184,11 +1421,10 @@ public class CapturadorPaquetesService
             mejores[0].mac;
     }
 
-    private List<IPAddress> ObtenerObjetivosAutomaticos(
+    private List<IPAddress> ObtenerObjetivosRedLocal(
         IPAddress direccionIpLocal,
         IPAddress mascaraRedLocal,
-        IPAddress puertaEnlace,
-        bool vecinoDirectoDetectado)
+        IPAddress puertaEnlace)
     {
         List<IPAddress> objetivos =
             new List<IPAddress>();
@@ -1214,136 +1450,303 @@ public class CapturadorPaquetesService
             }
         }
 
-        // Primero la puerta de enlace, si existe.
         Agregar(puertaEnlace);
 
-        if (direccionIpLocal != null &&
-            mascaraRedLocal != null)
+        if (direccionIpLocal == null ||
+            mascaraRedLocal == null)
         {
-            uint ipLocal =
-                ConvertirIPv4(direccionIpLocal);
-
-            uint mascara =
-                ConvertirIPv4(mascaraRedLocal);
-
-            uint red =
-                ipLocal & mascara;
-
-            uint broadcast =
-                red | ~mascara;
-
-            ulong cantidadDirecciones =
-                (ulong)broadcast -
-                red +
-                1UL;
-
-            // /31 se utiliza como enlace punto a punto: ambas direcciones
-            // son utilizables. Para redes de hasta /16 realizamos un
-            // sondeo completo de los hosts de esa red.
-            if (cantidadDirecciones == 2UL)
-            {
-                Agregar(
-                    ConvertirAIPv4(red));
-
-                Agregar(
-                    ConvertirAIPv4(broadcast));
-            }
-            else if (cantidadDirecciones <= 65536UL)
-            {
-                Agregar(
-                    ConvertirAIPv4(red + 1U));
-
-                if (broadcast > red + 1U)
-                {
-                    Agregar(
-                        ConvertirAIPv4(broadcast - 1U));
-                }
-
-                if (broadcast > red + 1U)
-                {
-                    for (uint candidato = red + 1U;
-                         candidato < broadcast;
-                         candidato++)
-                    {
-                        if (candidato == ipLocal)
-                        {
-                            continue;
-                        }
-
-                        Agregar(
-                            ConvertirAIPv4(candidato));
-                    }
-                }
-            }
+            return objetivos;
         }
 
-        // Solo ampliamos a redes comunes cuando ya tenemos una señal
-        // de vecino directo (LLDP/CDP/STP). En ese caso podemos filtrar
-        // las respuestas ARP por la MAC física del vecino y evitar confundir
-        // otros equipos de la red con el dispositivo objetivo.
-        if (vecinoDirectoDetectado)
+        uint ipLocal =
+            ConvertirIPv4(direccionIpLocal);
+
+        uint mascara =
+            ConvertirIPv4(mascaraRedLocal);
+
+        uint red =
+            ipLocal & mascara;
+
+        uint broadcast =
+            red | ~mascara;
+
+        ulong cantidadDirecciones =
+            (ulong)broadcast -
+            red +
+            1UL;
+
+        if (cantidadDirecciones == 2UL)
         {
-            AgregarRedComun(
-                objetivos,
-                vistos,
-                direccionIpLocal,
-                "10.0.0.0");
+            Agregar(
+                ConvertirAIPv4(red));
 
-            AgregarRedComun(
-                objetivos,
-                vistos,
-                direccionIpLocal,
-                "10.0.1.0");
+            Agregar(
+                ConvertirAIPv4(broadcast));
 
-            AgregarRedComun(
-                objetivos,
-                vistos,
-                direccionIpLocal,
-                "192.168.0.0");
-
-            AgregarRedComun(
-                objetivos,
-                vistos,
-                direccionIpLocal,
-                "192.168.1.0");
-
-            AgregarRedComun(
-                objetivos,
-                vistos,
-                direccionIpLocal,
-                "192.168.100.0");
-
-            AgregarRedComun(
-                objetivos,
-                vistos,
-                direccionIpLocal,
-                "172.16.0.0");
+            return objetivos;
         }
-        else if (direccionIpLocal == null)
-        {
-            // Sin IPv4 local y sin vecino directo confirmado, solo
-            // probamos direcciones administrativas habituales. No se
-            // recorre 169.254.0.0/16 ni se lanza un barrido enorme.
-            string[] ipHabituales =
-            {
-                "10.0.0.1",
-                "10.0.1.1",
-                "192.168.0.1",
-                "192.168.1.1",
-                "192.168.100.1",
-                "172.16.0.1",
-                "169.254.1.1",
-                "169.254.254.254"
-            };
 
-            foreach (string ip in ipHabituales)
+        if (cantidadDirecciones > 65536UL)
+        {
+            return objetivos;
+        }
+
+        for (uint candidato = red + 1U;
+             candidato < broadcast;
+             candidato++)
+        {
+            if (candidato == ipLocal)
             {
-                Agregar(
-                    IPAddress.Parse(ip));
+                continue;
             }
+
+            Agregar(
+                ConvertirAIPv4(candidato));
         }
 
         return objetivos;
+    }
+
+    private List<IPAddress> ObtenerObjetivosLinkLocal(
+        IPAddress direccionIpLocal)
+    {
+        List<IPAddress> objetivos =
+            new List<IPAddress>();
+
+        // RFC 3927 reserva 169.254.1.0 - 169.254.254.255
+        // para selección de direcciones Link-Local.
+        uint inicio =
+            ConvertirIPv4(
+                IPAddress.Parse(
+                    "169.254.1.0"));
+
+        uint fin =
+            ConvertirIPv4(
+                IPAddress.Parse(
+                    "169.254.254.255"));
+
+        for (uint candidato = inicio;
+             candidato <= fin;
+             candidato++)
+        {
+            IPAddress direccion =
+                ConvertirAIPv4(candidato);
+
+            if (direccionIpLocal != null &&
+                direccion.Equals(direccionIpLocal))
+            {
+                continue;
+            }
+
+            objetivos.Add(
+                direccion);
+        }
+
+        return objetivos;
+    }
+
+    private List<IPAddress> ObtenerObjetivosRespaldo(
+        IPAddress direccionIpLocal)
+    {
+        List<IPAddress> objetivos =
+            new List<IPAddress>();
+
+        HashSet<uint> vistos =
+            new HashSet<uint>();
+
+        void AgregarRed(
+            string direccionRed)
+        {
+            foreach (IPAddress direccion
+                     in CrearObjetivosRedComun(
+                         direccionIpLocal,
+                         direccionRed))
+            {
+                uint valor =
+                    ConvertirIPv4(direccion);
+
+                if (vistos.Add(valor))
+                {
+                    objetivos.Add(direccion);
+                }
+            }
+        }
+
+        AgregarRed("10.0.0.0");
+        AgregarRed("10.0.1.0");
+        AgregarRed("192.168.0.0");
+        AgregarRed("192.168.1.0");
+        AgregarRed("192.168.100.0");
+        AgregarRed("172.16.0.0");
+
+        return objetivos;
+    }
+
+    private List<IPAddress> CrearObjetivosRedComun(
+        IPAddress direccionIpLocal,
+        string direccionRed)
+    {
+        List<IPAddress> objetivos =
+            new List<IPAddress>();
+
+        IPAddress red =
+            IPAddress.Parse(
+                direccionRed);
+
+        uint baseRed =
+            ConvertirIPv4(red);
+
+        uint broadcast =
+            baseRed | 0x000000FFU;
+
+        AgregarObjetivo(
+            objetivos,
+            new HashSet<uint>(),
+            ConvertirAIPv4(
+                baseRed + 1U),
+            direccionIpLocal);
+
+        AgregarObjetivo(
+            objetivos,
+            new HashSet<uint>(),
+            ConvertirAIPv4(
+                broadcast - 1U),
+            direccionIpLocal);
+
+        for (uint candidato = baseRed + 1U;
+             candidato < broadcast;
+             candidato++)
+        {
+            if (candidato == baseRed + 1U ||
+                candidato == broadcast - 1U)
+            {
+                continue;
+            }
+
+            AgregarObjetivo(
+                objetivos,
+                new HashSet<uint>(),
+                ConvertirAIPv4(candidato),
+                direccionIpLocal);
+        }
+
+        return objetivos;
+    }
+
+    private async Task SondearArpAsync(
+        IInjectionDevice dispositivoInyeccion,
+        List<IPAddress> objetivos,
+        IPAddress direccionIpLocal,
+        PhysicalAddress direccionMacLocal,
+        PhysicalAddress direccionMacBroadcast,
+        PhysicalAddress direccionMacVacia,
+        IPAddress direccionOrigenArp,
+        int cantidadRondas,
+        SemaphoreSlim semaforoEnvioArp)
+    {
+        for (int ronda = 1;
+             ronda <= cantidadRondas;
+             ronda++)
+        {
+            int cantidadEnviada = 0;
+
+            foreach (IPAddress objetivo in objetivos)
+            {
+                if (!EsDireccionValidaArp(
+                        objetivo,
+                        direccionIpLocal))
+                {
+                    continue;
+                }
+
+                await semaforoEnvioArp.WaitAsync();
+
+                try
+                {
+                    EnviarConsultaArp(
+                        dispositivoInyeccion,
+                        direccionMacLocal,
+                        direccionMacBroadcast,
+                        direccionMacVacia,
+                        objetivo,
+                        direccionOrigenArp);
+                }
+                finally
+                {
+                    semaforoEnvioArp.Release();
+                }
+
+                cantidadEnviada++;
+
+                if (cantidadEnviada % TamanoLoteArp == 0)
+                {
+                    await Task.Delay(
+                        PausaLoteArpMs);
+                }
+            }
+
+            Console.WriteLine(
+                $"Sondeo ARP {ronda}/{cantidadRondas}: " +
+                $"{cantidadEnviada} solicitudes.");
+
+            if (ronda < cantidadRondas)
+            {
+                await Task.Delay(700);
+            }
+        }
+    }
+
+    private long EstimarDuracionArpMs(
+        int cantidadRedLocal,
+        int cantidadLinkLocal,
+        int cantidadRespaldo)
+    {
+        long redLocal =
+            CalcularDuracionSondeoMs(
+                cantidadRedLocal,
+                2);
+
+        long linkLocal =
+            CalcularDuracionSondeoMs(
+                cantidadLinkLocal,
+                1);
+
+        long respaldo =
+            CalcularDuracionSondeoMs(
+                cantidadRespaldo,
+                1);
+
+        // Las tres búsquedas se ejecutan concurrentemente. La demora total
+        // queda limitada aproximadamente por la más larga.
+        return
+            Math.Max(
+                redLocal,
+                Math.Max(
+                    linkLocal,
+                    respaldo))
+            + 500;
+    }
+
+    private long CalcularDuracionSondeoMs(
+        int cantidadObjetivos,
+        int cantidadRondas)
+    {
+        if (cantidadObjetivos <= 0)
+        {
+            return 0;
+        }
+
+        long lotes =
+            (cantidadObjetivos +
+             TamanoLoteArp -
+             1L) /
+            TamanoLoteArp;
+
+        return
+            lotes *
+            PausaLoteArpMs *
+            cantidadRondas
+            + (cantidadRondas - 1L) * 700L;
     }
 
     private void AgregarRedComun(
