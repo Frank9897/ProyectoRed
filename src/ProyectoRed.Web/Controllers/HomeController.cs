@@ -136,6 +136,14 @@ public class HomeController : Controller
                     string.IsNullOrWhiteSpace(metodoDeteccion)
                         ? "Detección automática"
                         : metodoDeteccion,
+                faseDeteccion =
+                    _capturadorPaquetesService.UltimaFaseDeteccion,
+                tiempoTranscurridoMs =
+                    _capturadorPaquetesService.UltimaDuracionDeteccionMs,
+                tiempoEstimadoMs =
+                    _capturadorPaquetesService.UltimaEstimacionDeteccionMs,
+                cantidadSondasArp =
+                    _capturadorPaquetesService.UltimaCantidadSondasArp,
                 mensajeEstado
             });
         }
@@ -214,6 +222,9 @@ public class HomeController : Controller
                 StringComparison.OrdinalIgnoreCase) ||
             origen.Contains(
                 "STP",
+                StringComparison.OrdinalIgnoreCase) ||
+            origen.Contains(
+                "EDP",
                 StringComparison.OrdinalIgnoreCase))
         {
             return origen +
