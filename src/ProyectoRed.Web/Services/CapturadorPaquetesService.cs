@@ -558,10 +558,9 @@ public class CapturadorPaquetesService
             // equipos. Si no hubo ningún vecino directo, el ARP pasa a
             // ser el único recurso disponible y el resultado deja de
             // tener la misma garantía de "un solo salto": lo indicamos
-            // dejando "ARP" como único origen en UltimoOrigenDeteccion,
-            // para que la interfaz pueda avisarle al técnico que es una
-            // IP alcanzable en la red, no necesariamente el dispositivo
-            // conectado directamente al cable.
+            // Si solo tenemos ARP, no existe confirmación física del
+            // vecino. Por eso las respuestas se consolidan antes de
+            // aceptar una única pareja IP + MAC.
             if (!vecinoDirectoDetectado ||
                 string.IsNullOrWhiteSpace(resultado.DireccionIP))
             {
@@ -949,8 +948,8 @@ public class CapturadorPaquetesService
     }
 
     /// <summary>
-    /// Busca una trama CDP dentro de los bytes crudos del frame
-    /// (LLC/SNAP con OUI Cisco 00-00-0C y PID 0x2000).
+    /// Busca una trama EDP dentro de los bytes crudos del frame
+    /// (LLC/SNAP con OUI Extreme 00-E0-2B y PID 0x00BB).
     /// Extrae Device-ID y la primera dirección IPv4 del Address TLV.
     /// </summary>
     private bool IntentarExtraerInformacionEdp(
@@ -1066,7 +1065,7 @@ public class CapturadorPaquetesService
                         datos,
                         inicioValor,
                         longitudValor)
-                    .TrimEnd(' ', ' ');
+                    .TrimEnd('\0', ' ');
             }
 
             // VLAN TLV: contiene la IP de la interfaz VLAN.
@@ -1252,7 +1251,7 @@ public class CapturadorPaquetesService
                         datos,
                         inicioValor,
                         longitudValor)
-                    .TrimEnd(' ');
+                    .TrimEnd('\0');
             }
 
             // 0x0002 = Address TLV. El valor comienza con la cantidad
