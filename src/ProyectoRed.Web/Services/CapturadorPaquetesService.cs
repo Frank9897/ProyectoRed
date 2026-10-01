@@ -133,6 +133,12 @@ public class CapturadorPaquetesService
         HashSet<uint> objetivosArpActivos =
             new HashSet<uint>();
 
+        Dictionary<uint, HashSet<string>> respuestasArp =
+            new Dictionary<uint, HashSet<string>>();
+
+        object sincronizacionArp =
+            new object();
+
         void RegistrarOrigen(string origen)
         {
             if (string.IsNullOrWhiteSpace(origen))
@@ -211,6 +217,24 @@ public class CapturadorPaquetesService
 
                     return;
                 }
+            }
+
+            // STP/RSTP identifica al puente conectado al puerto.
+            // Las BPDUs son tramas de enlace local y no se reenvían
+            // como tráfico IP por otros switches.
+            if (IntentarExtraerInformacionStp(
+                    capturaBruta.Data,
+                    out string macStp))
+            {
+                vecinoDirectoDetectado = true;
+                macVecinoDirecto = macStp;
+
+                resultado.DireccionMac =
+                    macStp;
+
+                RegistrarOrigen("STP");
+
+                return;
             }
 
             // CDP identifica de la misma forma al vecino Cisco y, cuando
@@ -311,11 +335,39 @@ public class CapturadorPaquetesService
                 return;
             }
 
-            resultado.DireccionIP =
-                arp.SenderProtocolAddress.ToString();
+            uint ipRemota =
+                ConvertirIPv4(arp.SenderProtocolAddress);
 
-            resultado.DireccionMac =
-                macFuenteArp;
+            if (!string.IsNullOrWhiteSpace(
+                    direccionIPObjetivo))
+            {
+                resultado.DireccionIP =
+                    arp.SenderProtocolAddress.ToString();
+
+                resultado.DireccionMac =
+                    macFuenteArp;
+
+                RegistrarOrigen("ARP");
+
+                return;
+            }
+
+            lock (sincronizacionArp)
+            {
+                if (!respuestasArp.TryGetValue(
+                        ipRemota,
+                        out HashSet<string> macs))
+                {
+                    macs =
+                        new HashSet<string>(
+                            StringComparer.OrdinalIgnoreCase);
+
+                    respuestasArp[ipRemota] =
+                        macs;
+                }
+
+                macs.Add(macFuenteArp);
+            }
 
             RegistrarOrigen("ARP");
         }
@@ -416,13 +468,17 @@ public class CapturadorPaquetesService
                         ? $"Detección dirigida iniciada para {direccionIPObjetivo}."
                         : $"Sin confirmación LLDP/CDP: recurriendo a ARP. Sondas: {objetivosArpActivos.Count}.");
 
-                foreach (IPAddress objetivo in objetivosArp)
+                if (busquedaManual)
                 {
-                    if (string.IsNullOrWhiteSpace(
-                            resultado.DireccionIP) &&
-                        EsDireccionValidaArp(
-                            objetivo,
-                            direccionIpLocal))
+                    IPAddress objetivo =
+                        IPAddress.Parse(
+                            direccionIPObjetivo);
+
+                    for (int intento = 1;
+                         intento <= 3 &&
+                         string.IsNullOrWhiteSpace(
+                             resultado.DireccionIP);
+                         intento++)
                     {
                         EnviarConsultaArp(
                             dispositivoInyeccion,
@@ -432,17 +488,30 @@ public class CapturadorPaquetesService
                             objetivo,
                             direccionOrigenArp);
 
-                        if (busquedaManual)
-                        {
-                            Console.WriteLine(
-                                $"Consulta ARP enviada para: {objetivo}");
-                        }
-                    }
+                        Console.WriteLine(
+                            $"Consulta ARP dirigida {intento}/3 enviada para: {objetivo}");
 
-                    if (!string.IsNullOrWhiteSpace(
-                            resultado.DireccionIP))
+                        await Task.Delay(100);
+                    }
+                }
+                else
+                {
+                    foreach (IPAddress objetivo in objetivosArp)
                     {
-                        break;
+                        if (!EsDireccionValidaArp(
+                                objetivo,
+                                direccionIpLocal))
+                        {
+                            continue;
+                        }
+
+                        EnviarConsultaArp(
+                            dispositivoInyeccion,
+                            direccionMacLocal,
+                            direccionMacBroadcast,
+                            direccionMacVacia,
+                            objetivo,
+                            direccionOrigenArp);
                     }
                 }
             }
@@ -463,8 +532,19 @@ public class CapturadorPaquetesService
                 resultado,
                 TimeSpan.FromSeconds(
                     busquedaManual
-                        ? 3
-                        : 5));
+                        ? 1
+                        : 3));
+
+            if (string.IsNullOrWhiteSpace(
+                    resultado.DireccionIP) &&
+                !busquedaManual)
+            {
+                ResolverResultadoArpAutomatico(
+                    resultado,
+                    respuestasArp,
+                    vecinoDirectoDetectado,
+                    macVecinoDirecto);
+            }
         }
         finally
         {
@@ -729,6 +809,75 @@ public class CapturadorPaquetesService
     /// (LLC/SNAP con OUI Cisco 00-00-0C y PID 0x2000).
     /// Extrae Device-ID y la primera dirección IPv4 del Address TLV.
     /// </summary>
+    private bool IntentarExtraerInformacionStp(
+        byte[] datos,
+        out string macOrigen)
+    {
+        macOrigen = null;
+
+        if (datos == null ||
+            datos.Length < 20)
+        {
+            return false;
+        }
+
+        int inicioLlc = 14;
+
+        ushort tipoEthernet =
+            (ushort)((datos[12] << 8) | datos[13]);
+
+        if (tipoEthernet == 0x8100 ||
+            tipoEthernet == 0x88A8)
+        {
+            if (datos.Length < 24)
+            {
+                return false;
+            }
+
+            inicioLlc = 18;
+        }
+
+        if (datos[inicioLlc] != 0x42 ||
+            datos[inicioLlc + 1] != 0x42 ||
+            datos[inicioLlc + 2] != 0x03)
+        {
+            return false;
+        }
+
+        int inicioBpdu =
+            inicioLlc + 3;
+
+        if (inicioBpdu + 4 > datos.Length)
+        {
+            return false;
+        }
+
+        ushort protocolo =
+            (ushort)((datos[inicioBpdu] << 8) |
+                     datos[inicioBpdu + 1]);
+
+        byte version =
+            datos[inicioBpdu + 2];
+
+        byte tipoBpdu =
+            datos[inicioBpdu + 3];
+
+        if (protocolo != 0x0000 ||
+            version > 3 ||
+            (tipoBpdu != 0x00 &&
+             tipoBpdu != 0x02))
+        {
+            return false;
+        }
+
+        macOrigen =
+            FormatearMac(
+                new PhysicalAddress(
+                    datos.Skip(6).Take(6).ToArray()));
+
+        return true;
+    }
+
     private void IntentarExtraerInformacionCdp(
         byte[] datos,
         out string macOrigen,
@@ -904,6 +1053,83 @@ public class CapturadorPaquetesService
         }
 
         return null;
+    }
+
+    private void ResolverResultadoArpAutomatico(
+        DispositivoDetectado resultado,
+        Dictionary<uint, HashSet<string>> respuestasArp,
+        bool vecinoDirectoDetectado,
+        string macVecinoDirecto)
+    {
+        List<(uint ip, string mac)> coincidencias =
+            new List<(uint ip, string mac)>();
+
+        foreach (KeyValuePair<uint, HashSet<string>> respuesta
+                 in respuestasArp)
+        {
+            foreach (string mac in respuesta.Value)
+            {
+                if (vecinoDirectoDetectado &&
+                    !string.Equals(
+                        mac,
+                        macVecinoDirecto,
+                        StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+
+                coincidencias.Add(
+                    (respuesta.Key, mac));
+            }
+        }
+
+        if (vecinoDirectoDetectado)
+        {
+            List<(uint ip, string mac)> directas =
+                coincidencias
+                    .GroupBy(candidato => candidato.ip)
+                    .Select(grupo => grupo.First())
+                    .ToList();
+
+            if (directas.Count == 1)
+            {
+                resultado.DireccionIP =
+                    ConvertirAIPv4(
+                        directas[0].ip)
+                    .ToString();
+
+                resultado.DireccionMac =
+                    directas[0].mac;
+            }
+
+            return;
+        }
+
+        // Sin una señal de vecino directo no elegimos la primera respuesta.
+        // ARP puede devolver varios equipos de la red. Solo aceptamos una
+        // pareja única IP + MAC para evitar resultados diferentes entre
+        // intentos por culpa del orden en que contestan los equipos.
+        List<(uint ip, string mac)> unicas =
+            coincidencias
+                .GroupBy(
+                    candidato =>
+                        $"{candidato.ip}:{candidato.mac}",
+                    StringComparer.OrdinalIgnoreCase)
+                .Select(grupo => grupo.First())
+                .ToList();
+
+        if (unicas.Count != 1)
+        {
+            return;
+        }
+
+        resultado.DireccionIP =
+            ConvertirAIPv4(
+                unicas[0].ip)
+            .ToString();
+
+        resultado.DireccionMac =
+            unicas[0].mac;
     }
 
     private List<IPAddress> ObtenerObjetivosAutomaticos(
