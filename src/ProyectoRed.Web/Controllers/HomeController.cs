@@ -83,7 +83,8 @@ public class HomeController : Controller
             string mensajeEstado = string.Empty;
 
             string metodoDeteccion =
-                _capturadorPaquetesService.UltimoOrigenDeteccion;
+                TraducirMetodoDeteccion(
+                    _capturadorPaquetesService.UltimoOrigenDeteccion);
 
             if (string.IsNullOrWhiteSpace(resultado.DireccionMac))
             {
@@ -186,6 +187,38 @@ public class HomeController : Controller
         return await Descubrir(
             nombreInterfaz,
             string.Empty);
+    }
+
+    private string TraducirMetodoDeteccion(
+        string origen)
+    {
+        if (string.IsNullOrWhiteSpace(origen))
+        {
+            return "Búsqueda automática";
+        }
+
+        if (origen.Contains(
+                "LLDP",
+                StringComparison.OrdinalIgnoreCase) ||
+            origen.Contains(
+                "CDP",
+                StringComparison.OrdinalIgnoreCase) ||
+            origen.Contains(
+                "STP",
+                StringComparison.OrdinalIgnoreCase))
+        {
+            return origen +
+                   " (vecino directo)";
+        }
+
+        if (origen.Equals(
+                "ARP",
+                StringComparison.OrdinalIgnoreCase))
+        {
+            return "ARP (sin confirmación de vecino directo)";
+        }
+
+        return origen;
     }
 
     [HttpGet]
