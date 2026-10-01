@@ -23,8 +23,6 @@ public class CapturadorPaquetesService
 
     public int UltimaCantidadSondasArp { get; private set; }
 
-    private const int TamanoLoteArp = 65_000;
-
     // 5.000 solicitudes ARP por segundo como máximo en la cola
     // nativa. Evitamos inundar el switch/Npcap y perder respuestas.
     private const int IntervaloSondaArpMicrosegundos = 200;
