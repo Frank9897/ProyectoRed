@@ -126,11 +126,15 @@ public class HomeController : Controller
                     "Se conservó la MAC del candidato más probable como dato de diagnóstico.";
             }
             else if (_capturadorPaquetesService.UltimaConfianzaDeteccion ==
-                     "Probable por heurística ARP")
+                     "Probable por heurística ARP" ||
+                     _capturadorPaquetesService.UltimaConfianzaDeteccion ==
+                     "Posible: candidato más probable" ||
+                     _capturadorPaquetesService.UltimaConfianzaDeteccion ==
+                     "Baja: candidato más probable")
             {
                 mensajeEstado =
-                    "Se seleccionó la IPv4 más probable entre las respuestas ARP. " +
-                    "La IP no fue confirmada por un protocolo de vecino directo.";
+                    "Se seleccionó la IPv4 con mayor evidencia disponible entre las respuestas ARP. " +
+                    "La confianza indica una inferencia del programa y no una confirmación de vecino directo.";
             }
             else
             {
@@ -265,7 +269,19 @@ public class HomeController : Controller
             if (_capturadorPaquetesService.UltimaConfianzaDeteccion ==
                 "Probable por heurística ARP")
             {
+                return "ARP (candidato probable)";
+            }
+
+            if (_capturadorPaquetesService.UltimaConfianzaDeteccion ==
+                "Posible: candidato más probable")
+            {
                 return "ARP (candidato más probable)";
+            }
+
+            if (_capturadorPaquetesService.UltimaConfianzaDeteccion ==
+                "Baja: candidato más probable")
+            {
+                return "ARP (candidato de baja confianza)";
             }
 
             if (_capturadorPaquetesService.UltimaConfianzaDeteccion ==
