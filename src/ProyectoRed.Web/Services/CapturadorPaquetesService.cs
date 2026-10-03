@@ -1343,6 +1343,32 @@ public class CapturadorPaquetesService
         return true;
     }
 
+    private bool EsDireccionEspecial(
+        IPAddress direccionIP)
+    {
+        if (direccionIP == null ||
+            direccionIP.AddressFamily !=
+                AddressFamily.InterNetwork)
+        {
+            return true;
+        }
+
+        if (direccionIP.Equals(
+                IPAddress.Any) ||
+            direccionIP.Equals(
+                IPAddress.Broadcast) ||
+            direccionIP.Equals(
+                IPAddress.Loopback))
+        {
+            return true;
+        }
+
+        byte[] bytes =
+            direccionIP.GetAddressBytes();
+
+        return bytes[0] >= 224;
+    }
+
     private bool IntentarExtraerInformacionStp(
         byte[] datos,
         out string macOrigen)
