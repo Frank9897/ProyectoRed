@@ -226,7 +226,7 @@ Ya se encuentran implementados:
 - Detección automática de HTTP, HTTPS, SSH y Telnet sobre la única IPv4 descubierta.
 - Modelo MetodoAccesoDispositivo con puerto, protocolo, URL o comando de acceso.
 - Comprobaciones de servicios ejecutadas en paralelo.
-- Botones para abrir URL web confirmada y copiar comandos SSH/Telnet.
+- Acciones por método para abrir una URL web confirmada o copiar comandos SSH/Telnet.
 - Correspondencia entre la interfaz de .NET y el dispositivo de captura de SharpPcap mediante GUID en Windows.
 - Captura pasiva de MAC e IPv4 del dispositivo remoto cuando aparece tráfico Ethernet/ARP/IPv4.
 - Endpoint de descubrimiento desde HomeController.
@@ -387,7 +387,7 @@ Las pruebas de servicios se ejecutan en paralelo. HTTP y HTTPS se validan median
 
 El resultado se almacena en EstadoAccesoDispositivo.MetodosAcceso y la vista muestra solamente los métodos que respondieron.
 
-La URL web seleccionada para el botón de apertura corresponde a un servicio HTTP/HTTPS realmente comprobado. Para SSH y Telnet se muestra una acción para copiar el comando:
+Cada servicio detectado muestra su propia acción. Para HTTP/HTTPS se ofrece una URL realmente comprobada; para SSH y Telnet se muestra una acción para copiar el comando:
 
 ~~~text
 ssh IP
