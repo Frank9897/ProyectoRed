@@ -396,7 +396,7 @@ HTTPS   TCP 443     [Abrir]
 SSH     TCP 22      [Copiar comando]
 ~~~
 
-El botón de apertura web utiliza únicamente una URL comprobada. Para SSH/Telnet se puede copiar un comando como:
+Cada servicio detectado presenta su propia acción. Para HTTP/HTTPS se ofrece una URL comprobada para abrirla directamente; para SSH/Telnet se puede copiar un comando como:
 
 ~~~text
 ssh 10.0.1.20
