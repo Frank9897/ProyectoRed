@@ -14,6 +14,7 @@ builder.Services.AddScoped<CapturadorPaquetesService>();
 builder.Services.AddScoped<AccesoDispositivoService>();
 builder.Services.AddScoped<ClasificadorDireccionService>();
 builder.Services.AddSingleton<HistorialDispositivosService>();
+builder.Services.AddSingleton<FabricanteMacService>();
 
 var app = builder.Build();
 
