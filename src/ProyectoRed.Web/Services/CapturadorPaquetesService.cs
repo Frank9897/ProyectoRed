@@ -759,8 +759,8 @@ public class CapturadorPaquetesService
             // ser el único recurso disponible y el resultado deja de
             // tener la misma garantía de "un solo salto": lo indicamos
             // Si solo tenemos ARP, no existe confirmación física del
-            // vecino. Por eso las respuestas se consolidan antes de
-            // aceptar una única pareja IP + MAC.
+            // vecino. Las respuestas se consolidan y se puntúan para
+            // escoger el candidato con mayor evidencia disponible.
             if (!vecinoDirectoDetectado ||
                 string.IsNullOrWhiteSpace(resultado.DireccionIP))
             {
@@ -788,6 +788,9 @@ public class CapturadorPaquetesService
                             direccionMacVacia,
                             objetivo,
                             direccionOrigenArp);
+
+                        Interlocked.Increment(
+                            ref _sondasArpActuales);
 
                         Console.WriteLine(
                             $"Consulta ARP dirigida {intento}/3 enviada para: {objetivo}");
