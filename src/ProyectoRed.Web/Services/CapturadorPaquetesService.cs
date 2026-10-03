@@ -458,7 +458,8 @@ public class CapturadorPaquetesService
                 ethernet.PayloadPacket as ArpPacket;
 
             if (arp == null ||
-                arp.Operation != ArpOperation.Response)
+                (arp.Operation != ArpOperation.Response &&
+                 arp.Operation != ArpOperation.Request))
             {
                 return;
             }
@@ -472,6 +473,68 @@ public class CapturadorPaquetesService
             string macFuenteArp =
                 FormatearMac(
                     arp.SenderHardwareAddress);
+
+            // Una solicitud ARP del vecino también puede revelar
+            // directamente su IPv4 de origen. Es especialmente útil
+            // cuando el equipo anuncia quién es mediante tráfico ARP
+            // pero no tiene LLDP/CDP.
+            if (arp.Operation == ArpOperation.Request &&
+                !EsDireccionEspecial(
+                    arp.SenderProtocolAddress))
+            {
+                if (vecinoDirectoDetectado &&
+                    string.Equals(
+                        macFuenteArp,
+                        macVecinoDirecto,
+                        StringComparison.OrdinalIgnoreCase))
+                {
+                    resultado.DireccionIP =
+                        arp.SenderProtocolAddress.ToString();
+
+                    resultado.DireccionMac =
+                        macFuenteArp;
+
+                    RegistrarOrigen("ARP");
+                    RegistrarFabricante(
+                        _fabricanteMacService.ObtenerFabricante(
+                            macFuenteArp));
+
+                    return;
+                }
+
+                uint ipSolicitud =
+                    ConvertirIPv4(
+                        arp.SenderProtocolAddress);
+
+                lock (sincronizacionArp)
+                {
+                    if (!respuestasArp.TryGetValue(
+                            ipSolicitud,
+                            out Dictionary<string, int> macsSolicitud))
+                    {
+                        macsSolicitud =
+                            new Dictionary<string, int>(
+                                StringComparer.OrdinalIgnoreCase);
+
+                        respuestasArp[ipSolicitud] =
+                            macsSolicitud;
+                    }
+
+                    macsSolicitud.TryGetValue(
+                        macFuenteArp,
+                        out int cantidadSolicitud);
+
+                    macsSolicitud[macFuenteArp] =
+                        cantidadSolicitud + 1;
+                }
+
+                RegistrarOrigen("ARP");
+                RegistrarFabricante(
+                    _fabricanteMacService.ObtenerFabricante(
+                        macFuenteArp));
+
+                return;
+            }
 
             // Si LLDP/CDP identificó un vecino directo pero todavía no
             // tenemos su IP, solo aceptamos ARP proveniente de esa misma MAC.
