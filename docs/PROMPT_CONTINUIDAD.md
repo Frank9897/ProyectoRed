@@ -212,6 +212,11 @@ Ya se encuentran implementados:
 - Búsqueda Link-Local 169.254/16 como fase ampliada y concurrente con el sondeo local.
 - Transmisión ARP optimizada mediante SendQueue de SharpPcap en Windows cuando Npcap expone la cola nativa.
 - Repetición de solicitudes ARP y consolidación de respuestas para reducir falsos positivos.
+- Análisis de solicitudes y respuestas ARP como señales adicionales.
+- Puntuación heurística para seleccionar el candidato más probable cuando no existe un protocolo de vecino directo.
+- Recuperación del fabricante a partir del prefijo MAC (OUI) cuando está disponible.
+- Uso de historial previo de IP/MAC de la misma interfaz como señal adicional de baja latencia.
+- Si no se puede confirmar una IPv4, la interfaz conserva la MAC/fabricante observados o muestra un cartel explícito de fallo; no presenta un resultado vacío como si fuera una detección exitosa.
 - Detección de IPv4 desde tráfico dirigido a la PC solamente cuando la asociación es útil para el diagnóstico.
 - Indicadores de tiempo transcurrido, estimación y cantidad de sondas ARP.
 - Correspondencia entre la interfaz de .NET y el dispositivo de captura de SharpPcap mediante GUID en Windows.
