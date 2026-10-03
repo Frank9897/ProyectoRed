@@ -690,7 +690,8 @@ public class CapturadorPaquetesService
                     ObtenerObjetivosRedLocal(
                         direccionIpLocal,
                         mascaraRedLocal,
-                        puertaEnlace);
+                        puertaEnlace,
+                        ipsHistoricas);
 
                 objetivosArpLinkLocal =
                     ObtenerObjetivosLinkLocal(
@@ -1952,10 +1953,30 @@ public class CapturadorPaquetesService
                 StringComparer.OrdinalIgnoreCase);
     }
 
+    private IEnumerable<string> ObtenerDireccionesGestionProbables()
+    {
+        return new[]
+        {
+            "192.168.0.1",
+            "192.168.0.254",
+            "192.168.1.1",
+            "192.168.1.254",
+            "192.168.100.1",
+            "192.168.100.254",
+            "10.0.0.1",
+            "10.0.0.254",
+            "10.0.1.1",
+            "10.0.1.254",
+            "172.16.0.1",
+            "172.16.0.254"
+        };
+    }
+
     private List<IPAddress> ObtenerObjetivosRedLocal(
         IPAddress direccionIpLocal,
         IPAddress mascaraRedLocal,
-        IPAddress puertaEnlace)
+        IPAddress puertaEnlace,
+        HashSet<string> ipsHistoricas)
     {
         List<IPAddress> objetivos =
             new List<IPAddress>();
@@ -2181,6 +2202,70 @@ public class CapturadorPaquetesService
         }
 
         return objetivos;
+    }
+
+    private async Task SondearArpLinkLocalAdaptativoAsync(
+        IInjectionDevice dispositivoInyeccion,
+        List<IPAddress> objetivos,
+        IPAddress direccionIpLocal,
+        PhysicalAddress direccionMacLocal,
+        PhysicalAddress direccionMacBroadcast,
+        PhysicalAddress direccionMacVacia,
+        IPAddress direccionOrigenArp,
+        SemaphoreSlim semaforoEnvioArp,
+        Dictionary<uint, Dictionary<string, int>> respuestasArp)
+    {
+        if (objetivos.Count == 0)
+        {
+            return;
+        }
+
+        // Primera pasada: cobertura completa de 169.254.1.0/24 hasta
+        // 169.254.254.255. Las respuestas se observan simultáneamente.
+        await SondearArpAsync(
+            dispositivoInyeccion,
+            objetivos,
+            direccionIpLocal,
+            direccionMacLocal,
+            direccionMacBroadcast,
+            direccionMacVacia,
+            direccionOrigenArp,
+            1,
+            semaforoEnvioArp);
+
+        await Task.Delay(300);
+
+        List<IPAddress> candidatos =
+            respuestasArp
+                .Keys
+                .Select(ConvertirAIPv4)
+                .Where(direccion =>
+                {
+                    byte[] bytes =
+                        direccion.GetAddressBytes();
+
+                    return bytes[0] == 169 &&
+                           bytes[1] == 254;
+                })
+                .ToList();
+
+        if (candidatos.Count == 0)
+        {
+            return;
+        }
+
+        // Segunda pasada: solo IP que respondieron. Así comprobamos
+        // consistencia sin repetir todo el /16.
+        await SondearArpAsync(
+            dispositivoInyeccion,
+            candidatos,
+            direccionIpLocal,
+            direccionMacLocal,
+            direccionMacBroadcast,
+            direccionMacVacia,
+            direccionOrigenArp,
+            1,
+            semaforoEnvioArp);
     }
 
     private async Task SondearArpAsync(
