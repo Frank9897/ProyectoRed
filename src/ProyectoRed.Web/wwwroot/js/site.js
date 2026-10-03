@@ -28,20 +28,8 @@ document.addEventListener("DOMContentLoaded", function () {
     const resultadoTipoDireccion =
         document.getElementById("resultadoTipoDireccion");
 
-    const resultadoNombre =
-        document.getElementById("resultadoNombre");
-
     const resultadoFabricante =
         document.getElementById("resultadoFabricante");
-
-    const resultadoConfianza =
-        document.getElementById("resultadoConfianza");
-
-    const resultadoPuntaje =
-        document.getElementById("resultadoPuntaje");
-
-    const resultadoRazon =
-        document.getElementById("resultadoRazon");
 
     const resultadoMascaraLocal =
         document.getElementById("resultadoMascaraLocal");
@@ -66,9 +54,6 @@ document.addEventListener("DOMContentLoaded", function () {
 
     const faseDeteccion =
         document.getElementById("faseDeteccion");
-
-    const resultadoTiempo =
-        document.getElementById("resultadoTiempo");
 
     const resultadoSondasArp =
         document.getElementById("resultadoSondasArp");
@@ -232,7 +217,7 @@ document.addEventListener("DOMContentLoaded", function () {
         const estimacionInicialMs =
             deteccionManual
                 ? 1500
-                : 8000;
+                : 20000;
 
         tiempoEstimado.textContent =
             "~" +
@@ -259,11 +244,23 @@ document.addEventListener("DOMContentLoaded", function () {
                         .toFixed(1) +
                     " s";
 
-                if (!deteccionManual &&
-                    transcurrido >= 6000)
+                if (!deteccionManual)
                 {
-                    faseDeteccion.textContent =
-                        "Sondeo ARP";
+                    if (transcurrido < 6000)
+                    {
+                        faseDeteccion.textContent =
+                            "Escuchando vecinos";
+                    }
+                    else if (transcurrido < estimacionInicialMs)
+                    {
+                        faseDeteccion.textContent =
+                            "Sondeo ARP";
+                    }
+                    else
+                    {
+                        faseDeteccion.textContent =
+                            "Sondeo ARP (tiempo extendido)";
+                    }
                 }
             }, 100);
 
@@ -304,32 +301,14 @@ document.addEventListener("DOMContentLoaded", function () {
             const ipDetectada =
                 datos.direccionIP || "";
 
-            const nombreDetectado =
-                datos.nombre || "";
-
             const fabricanteDetectado =
                 datos.fabricante || "";
-
-            const confianzaDetectada =
-                datos.confianzaDeteccion || "";
-
-            const puntajeDetectado =
-                Number(datos.puntajeDeteccion || 0);
-
-            const razonDetectada =
-                datos.razonDeteccion || "";
 
             const mascaraLocalDetectada =
                 datos.mascaraLocal || "";
 
             const metodoDetectado =
                 datos.metodoDeteccion || "";
-
-            const tiempoRealMs =
-                Number(datos.tiempoTranscurridoMs || 0);
-
-            const tiempoEstimadoMs =
-                Number(datos.tiempoEstimadoMs || 0);
 
             const cantidadSondas =
                 Number(datos.cantidadSondasArp || 0);
@@ -354,23 +333,9 @@ document.addEventListener("DOMContentLoaded", function () {
             resultadoTipoDireccion.textContent =
                 tipoDireccionDetectada || "No disponible";
 
-            resultadoNombre.textContent =
-                nombreDetectado || "No disponible";
-
             resultadoFabricante.textContent =
                 fabricanteDetectado ||
                 "No identificado";
-
-            resultadoConfianza.textContent =
-                confianzaDetectada ||
-                "No determinada";
-
-            resultadoPuntaje.textContent =
-                puntajeDetectado.toString();
-
-            resultadoRazon.textContent =
-                razonDetectada ||
-                "No disponible";
 
             resultadoMascaraLocal.textContent =
                 mascaraLocalDetectada ||
@@ -379,22 +344,17 @@ document.addEventListener("DOMContentLoaded", function () {
             resultadoMetodo.textContent =
                 metodoDetectado || "Búsqueda automática";
 
-            resultadoTiempo.textContent =
-                tiempoRealMs > 0
-                    ? (tiempoRealMs / 1000).toFixed(2) + " s"
-                    : "No disponible";
-
             resultadoSondasArp.textContent =
                 cantidadSondas.toLocaleString("es-AR");
 
             faseDeteccion.textContent =
                 faseFinal || "Finalizada";
 
-            if (tiempoEstimadoMs > 0)
+            if (typeof datos.tiempoTranscurridoMs === "number" &&
+                datos.tiempoTranscurridoMs > 0)
             {
-                tiempoEstimado.textContent =
-                    "~" +
-                    (tiempoEstimadoMs / 1000)
+                tiempoTranscurrido.textContent =
+                    (datos.tiempoTranscurridoMs / 1000)
                         .toFixed(1) +
                     " s";
             }
