@@ -230,9 +230,11 @@ Una conexión Ethernet en estado UP confirma el enlace físico, pero por sí sol
 
 ## Alcance de la primera versión
 
-La primera versión debe limitarse a:
+El núcleo de descubrimiento se mantiene limitado a:
 
-IP + MAC + Nombre
+IP + MAC + fabricante cuando se pueda obtener + nombre cuando exista
+
+La comprobación de acceso se limita a servicios de administración habituales sobre la IP ya detectada.
 
 No incorporar todavía:
 
@@ -339,17 +341,48 @@ ProyectoRed.Web.exe
 
 La instalación de ProyectoRed requiere permisos de administrador porque se instala en Program Files. La ejecución posterior no requiere instalar .NET por separado.
 
-## Acceso a la interfaz del dispositivo
+## Acceso y métodos de administración del dispositivo
 
-Después de detectar un dispositivo con una IPv4, la interfaz muestra el botón:
+Después de detectar una IPv4, ProyectoRed comprueba automáticamente los métodos de administración de esa única IP.
+
+La secuencia es:
 
 ~~~text
-Abrir interfaz del dispositivo
+IP detectada
+    |
+    +--> HTTP  : TCP 80
+    +--> HTTPS : TCP 443
+    +--> HTTPS : TCP 8443
+    +--> HTTP  : TCP 8080
+    +--> SSH   : TCP 22
+    +--> Telnet: TCP 23
 ~~~
 
-Al pulsarlo, el backend analiza la configuración IPv4 actual de la interfaz seleccionada.
+Las seis comprobaciones se realizan en paralelo para que un puerto cerrado no haga esperar secuencialmente a los demás.
 
-Se compara:
+Para HTTP/HTTPS se establece una conexión directa y se valida la respuesta del protocolo. HTTPS realiza un handshake TLS; el certificado no se utiliza para validar confianza, porque el objetivo de esta prueba es determinar si existe un servicio de administración HTTPS en el dispositivo.
+
+Para SSH se comprueba el banner inicial del protocolo. Para Telnet se comprueba que el puerto TCP 23 acepte una conexión; Telnet no dispone de un banner universal tan fiable como SSH, por lo que la interfaz debe entenderlo como "puerto Telnet accesible", no como una autenticación realizada.
+
+La interfaz puede mostrar, por ejemplo:
+
+~~~text
+Métodos de acceso detectados
+
+HTTPS   TCP 443     [Abrir]
+SSH     TCP 22      [Copiar comando]
+~~~
+
+El botón de apertura web utiliza únicamente una URL comprobada. Para SSH/Telnet se puede copiar un comando como:
+
+~~~text
+ssh 10.0.1.20
+telnet 10.0.1.20 23
+~~~
+
+La detección de métodos de administración se realiza solamente contra la IPv4 que ProyectoRed ya identificó. No se escanean otras direcciones de la red.
+
+La comparación de subred continúa siendo:
 
 ~~~text
 (IP de la PC AND máscara)
@@ -357,21 +390,17 @@ Se compara:
 (IP del dispositivo AND máscara)
 ~~~
 
-Si ambas direcciones pertenecen a la misma red, ProyectoRed abre:
+Si la PC y el dispositivo están en redes diferentes, la comprobación de servicios no se ejecuta como si fueran accesibles directamente y se muestra la guía de configuración IPv4 temporal.
+
+Si no existe un servicio web pero sí SSH o Telnet, no se considera un fallo: ProyectoRed muestra el método de acceso encontrado y su comando correspondiente.
+
+Si no se detecta ningún método, se informa explícitamente:
 
 ~~~text
-http://IP-DEL-DISPOSITIVO
+No se detectaron HTTP, HTTPS, SSH ni Telnet.
 ~~~
 
-en una nueva pestaña del navegador.
-
-Si no se puede confirmar el servicio web con la configuración actual, ProyectoRed muestra una configuración temporal de prueba. La IP sugerida se coloca en la misma red de los primeros tres octetos de la IP detectada y se propone máscara /24 como primera prueba. La máscara real del dispositivo no puede conocerse a partir de una respuesta ARP, por lo que la guía se presenta como una configuración temporal, no como la máscara definitiva del equipo.
-
-La propuesta deja la puerta de enlace vacía porque el objetivo de esta configuración temporal es acceder al dispositivo de forma local.
-
-También se consulta si la interfaz utiliza DHCP. Si está en DHCP, el mensaje indica que se debe comprobar que exista un servidor DHCP que entregue una dirección de la misma red. Si está configurada manualmente, se informa de que puede ser necesario cambiar temporalmente la configuración IPv4.
-
-Esta funcionalidad no realiza modificaciones automáticas en la configuración de red de Windows.
+Esta funcionalidad no realiza autenticación, no intenta descubrir credenciales y no modifica la configuración del dispositivo. Tampoco modifica automáticamente la configuración de red de Windows.
 
 ## Clasificación de IPv4
 
