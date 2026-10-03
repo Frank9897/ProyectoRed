@@ -156,6 +156,8 @@ public class HomeController : Controller
                     _capturadorPaquetesService.UltimoPuntajeDeteccion,
                 razonDeteccion =
                     _capturadorPaquetesService.UltimaRazonDeteccion,
+                puntajeDeteccion =
+                    _capturadorPaquetesService.UltimoPuntajeDeteccion,
                 metodoDeteccion =
                     string.IsNullOrWhiteSpace(metodoDeteccion)
                         ? "Detección automática"
@@ -249,6 +251,9 @@ public class HomeController : Controller
                 StringComparison.OrdinalIgnoreCase) ||
             origen.Contains(
                 "EDP",
+                StringComparison.OrdinalIgnoreCase) ||
+            origen.Contains(
+                "FDP",
                 StringComparison.OrdinalIgnoreCase))
         {
             return origen +
