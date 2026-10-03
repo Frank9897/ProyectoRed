@@ -58,6 +58,12 @@ document.addEventListener("DOMContentLoaded", function () {
     const resultadoSondasArp =
         document.getElementById("resultadoSondasArp");
 
+    const metodosAcceso =
+        document.getElementById("metodosAcceso");
+
+    const listaMetodosAcceso =
+        document.getElementById("listaMetodosAcceso");
+
     const btnAbrirInterfaz =
         document.getElementById("btnAbrirInterfaz");
 
@@ -96,98 +102,325 @@ document.addEventListener("DOMContentLoaded", function () {
             (ipActual || "sin IPv4 configurada.");
     });
 
-    btnAbrirInterfaz.addEventListener("click", async function () {
-        const nombreInterfaz = interfazRed.value;
-        const direccionIP = resultadoIp.textContent;
+    async function comprobarAccesoDispositivoAsync(
+        nombreInterfaz,
+        direccionIP,
+        ventanaInterfaz = null)
+    {
+        // respuesta contiene el estado de acceso que devuelve el backend.
+        // Cambiarla modifica la fuente de datos usada para representar
+        // HTTP, HTTPS, SSH y Telnet en pantalla.
+        let respuesta;
 
-        if (!nombreInterfaz || !direccionIP ||
-            direccionIP === "No disponible") {
-            mensajeAcceso.textContent =
-                "No hay una dirección IPv4 disponible para abrir la interfaz.";
+        try
+        {
+            // respuestaHttp es la respuesta HTTP del endpoint local de ASP.NET.
+            // Cambiar la ruta modifica el backend que realiza las pruebas.
+            const respuestaHttp =
+                await fetch(
+                    "/Home/AccesoDispositivo?nombreInterfaz=" +
+                    encodeURIComponent(nombreInterfaz) +
+                    "&direccionIP=" +
+                    encodeURIComponent(direccionIP));
 
-            mensajeAcceso.className =
-                "alert alert-warning mt-3 mb-0";
+            // respuesta = JSON deserializado con los resultados de acceso.
+            // Cambiar este objeto exige adaptar todos los campos consumidos
+            // por la interfaz.
+            respuesta =
+                await respuestaHttp.json();
 
-            return;
-        }
-
-        btnAbrirInterfaz.disabled = true;
-        mensajeAcceso.classList.add("d-none");
-        configuracionManual.classList.add("d-none");
-
-        // Abrimos la pestaña durante el click del usuario para evitar
-        // que el navegador bloquee la apertura después del fetch.
-        const ventanaInterfaz =
-            window.open("about:blank", "_blank");
-
-        if (!ventanaInterfaz) {
-            mensajeAcceso.textContent =
-                "El navegador bloqueó la nueva pestaña. Permita ventanas emergentes para ProyectoRed.";
-
-            mensajeAcceso.className =
-                "alert alert-warning mt-3 mb-0";
-
-            btnAbrirInterfaz.disabled = false;
-            return;
-        }
-
-        try {
-            const respuesta = await fetch(
-                "/Home/AccesoDispositivo?nombreInterfaz=" +
-                encodeURIComponent(nombreInterfaz) +
-                "&direccionIP=" +
-                encodeURIComponent(direccionIP)
-            );
-
-            const datos = await respuesta.json();
-
-            if (!respuesta.ok) {
+            if (!respuestaHttp.ok)
+            {
                 throw new Error(
-                    datos.mensaje ||
-                    "No se pudo comprobar el acceso al dispositivo."
-                );
+                    respuesta.mensaje ||
+                    "No se pudo comprobar el acceso al dispositivo.");
             }
 
-            mensajeAcceso.textContent =
-                datos.mensaje || "";
+            // Renderizamos siempre la lista para que el técnico pueda ver
+            // los métodos detectados aunque no exista una interfaz web.
+            renderizarMetodosAcceso(
+                respuesta.metodosAcceso || []);
 
-            if (datos.puedeAbrirInterfaz) {
+            if (respuesta.puedeAbrirInterfaz)
+            {
+                // mensajeAcceso describe el resultado de la comprobación web.
+                // Cambiarlo solo modifica el texto informativo.
+                mensajeAcceso.textContent =
+                    respuesta.mensaje || "";
+
                 mensajeAcceso.className =
                     "alert alert-success mt-3 mb-0";
 
-                ventanaInterfaz.opener = null;
-                ventanaInterfaz.location.href =
-                    datos.urlInterfaz;
+                if (ventanaInterfaz)
+                {
+                    ventanaInterfaz.opener = null;
+                    ventanaInterfaz.location.href =
+                        respuesta.urlInterfaz;
+                }
             }
-            else {
-                ventanaInterfaz.close();
+            else
+            {
+                if (ventanaInterfaz)
+                {
+                    ventanaInterfaz.close();
+                }
+
+                mensajeAcceso.textContent =
+                    respuesta.mensaje || "";
 
                 mensajeAcceso.className =
                     "alert alert-warning mt-3 mb-0";
 
-                if (datos.configuracionManual &&
-                    datos.configuracionManual.direccionIP) {
+                if (respuesta.configuracionManual &&
+                    respuesta.configuracionManual.direccionIP)
+                {
                     configuracionIp.textContent =
-                        datos.configuracionManual.direccionIP;
+                        respuesta.configuracionManual.direccionIP;
 
                     configuracionMascara.textContent =
-                        datos.configuracionManual.mascaraRed;
+                        respuesta.configuracionManual.mascaraRed;
 
                     configuracionManual.classList.remove("d-none");
                 }
+                else if (!respuesta.metodosAcceso ||
+                         respuesta.metodosAcceso.length === 0)
+                {
+                    configuracionManual.classList.add("d-none");
+                }
             }
+
+            return respuesta;
         }
-        catch (error) {
-            ventanaInterfaz.close();
+        catch (error)
+        {
+            if (ventanaInterfaz)
+            {
+                ventanaInterfaz.close();
+            }
 
             mensajeAcceso.textContent =
                 error.message;
 
             mensajeAcceso.className =
                 "alert alert-danger mt-3 mb-0";
+
+            return null;
         }
-        finally {
-            btnAbrirInterfaz.disabled = false;
+    }
+
+    function renderizarMetodosAcceso(
+        metodos)
+    {
+        // listaMetodos contiene exclusivamente los métodos que el backend
+        // confirmó. Cambiarla modifica la representación visual.
+        listaMetodosAcceso.innerHTML = "";
+
+        if (!Array.isArray(metodos) ||
+            metodos.length === 0)
+        {
+            metodosAcceso.classList.remove("d-none");
+
+            // mensajeSinMetodos explica que se comprobaron los servicios
+            // pero ninguno respondió de forma compatible.
+            const mensajeSinMetodos =
+                document.createElement("div");
+
+            mensajeSinMetodos.className =
+                "text-muted small";
+
+            mensajeSinMetodos.textContent =
+                "No se detectaron HTTP, HTTPS, SSH ni Telnet.";
+
+            listaMetodosAcceso.appendChild(
+                mensajeSinMetodos);
+
+            return;
+        }
+
+        metodosAcceso.classList.remove("d-none");
+
+        for (const metodo of metodos)
+        {
+            // filaMetodo representa una línea visual de un método de acceso.
+            // Cambiarla modifica el formato de cada servicio detectado.
+            const filaMetodo =
+                document.createElement("div");
+
+            filaMetodo.className =
+                "d-flex flex-wrap align-items-center " +
+                "justify-content-between gap-2 border-bottom py-2";
+
+            // informacionMetodo agrupa nombre y puerto del servicio.
+            const informacionMetodo =
+                document.createElement("div");
+
+            // nombreMetodo es la etiqueta HTTP, HTTPS, SSH o Telnet.
+            const nombreMetodo =
+                document.createElement("strong");
+
+            nombreMetodo.textContent =
+                metodo.nombre || "Método";
+
+            // puertoMetodo muestra el puerto TCP comprobado.
+            // Cambiarlo solo cambia la información visual devuelta por el backend.
+            const puertoMetodo =
+                document.createElement("span");
+
+            puertoMetodo.className =
+                "text-muted ms-2";
+
+            puertoMetodo.textContent =
+                "TCP " +
+                String(metodo.puerto || "");
+
+            informacionMetodo.appendChild(
+                nombreMetodo);
+
+            informacionMetodo.appendChild(
+                puertoMetodo);
+
+            filaMetodo.appendChild(
+                informacionMetodo);
+
+            if (metodo.url)
+            {
+                // enlaceMetodo permite abrir directamente el servicio web
+                // confirmado. No usa una URL inventada por la interfaz.
+                const enlaceMetodo =
+                    document.createElement("a");
+
+                enlaceMetodo.href =
+                    metodo.url;
+
+                enlaceMetodo.target =
+                    "_blank";
+
+                enlaceMetodo.rel =
+                    "noopener noreferrer";
+
+                enlaceMetodo.className =
+                    "btn btn-sm btn-outline-primary";
+
+                enlaceMetodo.textContent =
+                    "Abrir";
+
+                filaMetodo.appendChild(
+                    enlaceMetodo);
+            }
+            else if (metodo.comando)
+            {
+                // botonComando copia SSH/Telnet al portapapeles sin intentar
+                // autenticarse ni modificar el dispositivo.
+                const botonComando =
+                    document.createElement("button");
+
+                botonComando.type =
+                    "button";
+
+                botonComando.className =
+                    "btn btn-sm btn-outline-secondary";
+
+                botonComando.textContent =
+                    "Copiar comando";
+
+                // comando es el texto exacto que queremos copiar.
+                // Cambiarlo modifica el comando que recibirá el técnico.
+                const comando =
+                    metodo.comando;
+
+                botonComando.addEventListener(
+                    "click",
+                    async function () {
+                        try
+                        {
+                            await navigator.clipboard.writeText(
+                                comando);
+
+                            botonComando.textContent =
+                                "Copiado";
+                        }
+                        catch
+                        {
+                            botonComando.textContent =
+                                comando;
+                        }
+                    });
+
+                filaMetodo.appendChild(
+                    botonComando);
+            }
+
+            listaMetodosAcceso.appendChild(
+                filaMetodo);
+        }
+    }
+
+    btnAbrirInterfaz.addEventListener("click", async function () {
+        // nombreInterfaz identifica la NIC que está físicamente conectada.
+        // Cambiarla podría dirigir las pruebas de acceso por otra interfaz.
+        const nombreInterfaz =
+            interfazRed.value;
+
+        // direccionIP es la IPv4 que ProyectoRed ya mostró como resultado.
+        // Cambiarla modifica el dispositivo contra el que se probará el acceso.
+        const direccionIP =
+            resultadoIp.textContent;
+
+        if (!nombreInterfaz ||
+            !direccionIP ||
+            direccionIP === "No disponible" ||
+            direccionIP === "No determinada")
+        {
+            mensajeAcceso.textContent =
+                "No hay una dirección IPv4 disponible para abrir el dispositivo.";
+
+            mensajeAcceso.className =
+                "alert alert-warning mt-3 mb-0";
+
+            return;
+        }
+
+        btnAbrirInterfaz.disabled =
+            true;
+
+        mensajeAcceso.classList.add(
+            "d-none");
+
+        configuracionManual.classList.add(
+            "d-none");
+
+        // ventanaInterfaz se abre durante el clic para evitar que el navegador
+        // bloquee la nueva pestaña después de la comprobación asíncrona.
+        const ventanaInterfaz =
+            window.open(
+                "about:blank",
+                "_blank");
+
+        if (!ventanaInterfaz)
+        {
+            mensajeAcceso.textContent =
+                "El navegador bloqueó la nueva pestaña. Permita ventanas emergentes para ProyectoRed.";
+
+            mensajeAcceso.className =
+                "alert alert-warning mt-3 mb-0";
+
+            btnAbrirInterfaz.disabled =
+                false;
+
+            return;
+        }
+
+        try
+        {
+            await comprobarAccesoDispositivoAsync(
+                nombreInterfaz,
+                direccionIP,
+                ventanaInterfaz);
+        }
+        finally
+        {
+            btnAbrirInterfaz.disabled =
+                false;
         }
     });
 
@@ -377,9 +610,17 @@ document.addEventListener("DOMContentLoaded", function () {
 
             if (ipDetectada) {
                 btnAbrirInterfaz.classList.remove("d-none");
+
+                // La comprobación automática usa la IP ya detectada y no
+                // abre ninguna ventana. Se ejecuta en segundo plano para
+                // no alterar los contadores de tiempo del descubrimiento.
+                comprobarAccesoDispositivoAsync(
+                    nombreInterfaz,
+                    ipDetectada);
             }
             else {
                 btnAbrirInterfaz.classList.add("d-none");
+                metodosAcceso.classList.add("d-none");
             }
 
             if (macDetectada) {
