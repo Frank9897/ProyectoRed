@@ -179,6 +179,37 @@ public class CapturadorPaquetesService
         object sincronizacionArp =
             new object();
 
+        List<RegistroDispositivo> historial =
+            await _historialDispositivosService.ObtenerHistorialAsync();
+
+        HashSet<string> ipsHistoricas =
+            historial
+                .Where(registro =>
+                    string.Equals(
+                        registro.NombreInterfaz,
+                        nombreInterfaz,
+                        StringComparison.OrdinalIgnoreCase) &&
+                    !string.IsNullOrWhiteSpace(
+                        registro.DireccionIP))
+                .Select(registro =>
+                    registro.DireccionIP)
+                .ToHashSet(
+                    StringComparer.OrdinalIgnoreCase);
+
+        HashSet<string> macsHistoricas =
+            historial
+                .Where(registro =>
+                    string.Equals(
+                        registro.NombreInterfaz,
+                        nombreInterfaz,
+                        StringComparison.OrdinalIgnoreCase) &&
+                    !string.IsNullOrWhiteSpace(
+                        registro.DireccionMac))
+                .Select(registro =>
+                    registro.DireccionMac)
+                .ToHashSet(
+                    StringComparer.OrdinalIgnoreCase);
+
         void RegistrarOrigen(string origen)
         {
             if (string.IsNullOrWhiteSpace(origen))
@@ -266,6 +297,9 @@ public class CapturadorPaquetesService
                     nombreLldpDirecto ?? string.Empty;
 
                 RegistrarOrigen("LLDP");
+                RegistrarFabricante(
+                    _fabricanteMacService.ObtenerFabricante(
+                        macLldpDirecta));
 
                 // En detección manual la IP introducida por el técnico
                 // sigue siendo la dirección objetivo. Si LLDP solo aporta
@@ -300,7 +334,9 @@ public class CapturadorPaquetesService
                     nombreEdp ?? string.Empty;
 
                 RegistrarOrigen("EDP");
-                RegistrarFabricante("Extreme Networks");
+                RegistrarFabricante(
+                    _fabricanteMacService.ObtenerFabricante(
+                        macEdp));
                 RegistrarFabricante("Extreme Networks");
 
                 if (!string.IsNullOrWhiteSpace(direccionGestionEdp) &&
@@ -329,7 +365,9 @@ public class CapturadorPaquetesService
                     nombreFdp ?? string.Empty;
 
                 RegistrarOrigen("FDP");
-                RegistrarFabricante("Foundry / Ruckus");
+                RegistrarFabricante(
+                    _fabricanteMacService.ObtenerFabricante(
+                        macFdp));
 
                 if (!string.IsNullOrWhiteSpace(direccionGestionFdp) &&
                     string.IsNullOrWhiteSpace(direccionIPObjetivo))
@@ -385,7 +423,9 @@ public class CapturadorPaquetesService
                 }
 
                 RegistrarOrigen("CDP");
-                RegistrarFabricante("Cisco Systems");
+                RegistrarFabricante(
+                    _fabricanteMacService.ObtenerFabricante(
+                        macCdp));
                 RegistrarFabricante("Cisco Systems");
 
                 if (!string.IsNullOrWhiteSpace(direccionGestionCdp) &&
@@ -768,7 +808,9 @@ public class CapturadorPaquetesService
                         respuestasArp,
                         vecinoDirectoDetectado,
                         macVecinoDirecto,
-                        puertaEnlace);
+                        puertaEnlace,
+                        ipsHistoricas,
+                        macsHistoricas);
                 }
             }
         }
@@ -1618,7 +1660,9 @@ public class CapturadorPaquetesService
         Dictionary<uint, Dictionary<string, int>> respuestasArp,
         bool vecinoDirectoDetectado,
         string macVecinoDirecto,
-        IPAddress puertaEnlace)
+        IPAddress puertaEnlace,
+        HashSet<string> ipsHistoricas,
+        HashSet<string> macsHistoricas)
     {
         List<(uint ip, string mac, int respuestas, string fabricante, int puntaje)> candidatos =
             new List<(uint ip, string mac, int respuestas, string fabricante, int puntaje)>();
@@ -1646,6 +1690,14 @@ public class CapturadorPaquetesService
                     _fabricanteMacService.ObtenerFabricante(
                         mac.Key);
 
+                bool ipHistorica =
+                    ipsHistoricas.Contains(
+                        ip.ToString());
+
+                bool macHistorica =
+                    macsHistoricas.Contains(
+                        mac.Key);
+
                 int puntaje =
                     CalcularPuntajeArp(
                         ip,
@@ -1653,7 +1705,9 @@ public class CapturadorPaquetesService
                         mac.Value,
                         puertaEnlace,
                         fabricante,
-                        vecinoDirectoDetectado);
+                        vecinoDirectoDetectado,
+                        ipHistorica,
+                        macHistorica);
 
                 candidatos.Add(
                     (respuesta.Key,
@@ -1675,6 +1729,8 @@ public class CapturadorPaquetesService
                     candidato => candidato.puntaje)
                 .ThenByDescending(
                     candidato => candidato.respuestas)
+                .ThenBy(
+                    candidato => candidato.ip)
                 .ToList();
 
         var mejor =
@@ -1695,57 +1751,72 @@ public class CapturadorPaquetesService
         UltimoFabricanteDeteccion =
             mejor.fabricante;
 
-        bool candidatoProbable =
-            mejor.puntaje >= 55 &&
-            (ordenados.Count == 1 ||
-             diferencia >= 12);
+        // Siempre elegimos el candidato con mayor evidencia disponible.
+        // La confianza indica si la IP es confirmada, probable o solo la
+        // mejor opción heurística. Esto evita resultados nulos cuando ARP
+        // sí obtuvo información, sin presentar la heurística como certeza.
+        resultado.DireccionIP =
+            ConvertirAIPv4(
+                mejor.ip)
+            .ToString();
+
+        resultado.DireccionMac =
+            mejor.mac;
+
+        if (string.IsNullOrWhiteSpace(
+                resultado.Nombre))
+        {
+            resultado.Nombre =
+                mejor.fabricante;
+        }
 
         if (vecinoDirectoDetectado)
         {
-            candidatoProbable =
-                mejor.puntaje >= 40;
-        }
-
-        if (candidatoProbable)
-        {
-            resultado.DireccionIP =
-                ConvertirAIPv4(
-                    mejor.ip)
-                .ToString();
-
-            resultado.DireccionMac =
-                mejor.mac;
-
-            if (string.IsNullOrWhiteSpace(
-                    resultado.Nombre))
-            {
-                resultado.Nombre =
-                    mejor.fabricante;
-            }
-
             UltimaConfianzaDeteccion =
-                vecinoDirectoDetectado
-                    ? "Confirmado por vecino directo"
-                    : "Probable por heurística ARP";
-
-            UltimaRazonDeteccion =
-                $"Puntaje {mejor.puntaje}, " +
-                $"{mejor.respuestas} respuesta(s), " +
-                $"fabricante: {mejor.fabricante}.";
+                "Confirmado por vecino directo";
+        }
+        else if (diferencia >= 12 &&
+                 mejor.puntaje >= 55)
+        {
+            UltimaConfianzaDeteccion =
+                "Probable por heurística ARP";
+        }
+        else if (mejor.puntaje >= 30)
+        {
+            UltimaConfianzaDeteccion =
+                "Posible: candidato más probable";
         }
         else
         {
-            resultado.DireccionMac =
-                mejor.mac;
-
             UltimaConfianzaDeteccion =
-                "Candidato observado";
+                "Baja: candidato más probable";
+        }
 
-            UltimaRazonDeteccion =
-                $"No hubo evidencia suficiente para confirmar la IPv4. " +
-                $"MAC candidata: {mejor.mac}; " +
-                $"fabricante: {mejor.fabricante}; " +
-                $"puntaje: {mejor.puntaje}.";
+        UltimaRazonDeteccion =
+            $"Se seleccionó el candidato con mayor evidencia: " +
+            $"{mejor.puntaje} puntos, " +
+            $"{mejor.respuestas} respuesta(s), " +
+            $"fabricante: {mejor.fabricante}.";
+
+        if (diferencia < 12 &&
+            ordenados.Count > 1)
+        {
+            UltimaRazonDeteccion +=
+                " Otros candidatos quedaron muy cerca.";
+        }
+
+        if (ipsHistoricas.Contains(
+                ConvertirAIPv4(mejor.ip).ToString()))
+        {
+            UltimaRazonDeteccion +=
+                " La IP apareció en el historial de esta interfaz.";
+        }
+
+        if (macsHistoricas.Contains(
+                mejor.mac))
+        {
+            UltimaRazonDeteccion +=
+                " La MAC apareció en el historial de esta interfaz.";
         }
     }
 
@@ -1755,7 +1826,9 @@ public class CapturadorPaquetesService
         int respuestas,
         IPAddress puertaEnlace,
         string fabricante,
-        bool vecinoDirectoDetectado)
+        bool vecinoDirectoDetectado,
+        bool ipHistorica,
+        bool macHistorica)
     {
         int puntaje =
             Math.Min(
@@ -1799,6 +1872,16 @@ public class CapturadorPaquetesService
             direccionIP.GetAddressBytes()[1] == 254)
         {
             puntaje += 5;
+        }
+
+        if (ipHistorica)
+        {
+            puntaje += 25;
+        }
+
+        if (macHistorica)
+        {
+            puntaje += 35;
         }
 
         return puntaje;
@@ -1849,6 +1932,18 @@ public class CapturadorPaquetesService
             Agregar(
                 IPAddress.Parse(
                     candidato));
+        }
+
+        foreach (string ipHistorica in
+                 ipsHistoricas.Take(128))
+        {
+            if (IPAddress.TryParse(
+                    ipHistorica,
+                    out IPAddress direccionHistorica))
+            {
+                Agregar(
+                    direccionHistorica);
+            }
         }
 
         if (direccionIpLocal == null ||
