@@ -41,6 +41,8 @@ public class CapturadorPaquetesService
     // nativa. Evitamos inundar el switch/Npcap y perder respuestas.
     private const int IntervaloSondaArpMicrosegundos = 200;
 
+    private int _sondasArpActuales;
+
     public CapturadorPaquetesService(
         HistorialDispositivosService historialDispositivosService,
         FabricanteMacService fabricanteMacService)
@@ -61,6 +63,10 @@ public class CapturadorPaquetesService
         UltimaDuracionDeteccionMs = 0;
         UltimaEstimacionDeteccionMs = 0;
         UltimaFaseDeteccion = "Preparando detección";
+        Interlocked.Exchange(
+            ref _sondasArpActuales,
+            0);
+
         UltimaCantidadSondasArp = 0;
 
         System.Diagnostics.Stopwatch cronometro =
@@ -726,8 +732,7 @@ public class CapturadorPaquetesService
                     ConvertirIPv4(objetivo));
             }
 
-            UltimaCantidadSondasArp =
-                objetivosArpActivos.Count;
+            UltimaCantidadSondasArp = 0;
 
             UltimaEstimacionDeteccionMs =
                 busquedaManual
@@ -900,6 +905,10 @@ public class CapturadorPaquetesService
                 : "Detección finalizada";
 
         cronometro.Stop();
+
+        UltimaCantidadSondasArp =
+            Volatile.Read(
+                ref _sondasArpActuales);
 
         UltimaDuracionDeteccionMs =
             cronometro.ElapsedMilliseconds;
@@ -2326,6 +2335,9 @@ public class CapturadorPaquetesService
                         direccionMacVacia,
                         objetivo,
                         direccionOrigenArp);
+
+                    Interlocked.Increment(
+                        ref _sondasArpActuales);
                 }
                 finally
                 {
@@ -2339,6 +2351,10 @@ public class CapturadorPaquetesService
                     await Task.Delay(10);
                 }
             }
+
+            UltimaCantidadSondasArp =
+                Volatile.Read(
+                    ref _sondasArpActuales);
 
             Console.WriteLine(
                 $"Sondeo ARP {ronda}/{cantidadRondas}: " +
@@ -2437,6 +2453,14 @@ public class CapturadorPaquetesService
                     semaforoEnvioArp,
                     SendQueueTransmitModes.Synchronized);
             }
+
+            Interlocked.Add(
+                ref _sondasArpActuales,
+                cantidadEnviada);
+
+            UltimaCantidadSondasArp =
+                Volatile.Read(
+                    ref _sondasArpActuales);
 
             Console.WriteLine(
                 $"Sondeo ARP optimizado y regulado " +
