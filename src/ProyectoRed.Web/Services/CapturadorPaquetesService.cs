@@ -1826,13 +1826,6 @@ public class CapturadorPaquetesService
         resultado.DireccionMac =
             mejor.mac;
 
-        if (string.IsNullOrWhiteSpace(
-                resultado.Nombre))
-        {
-            resultado.Nombre =
-                mejor.fabricante;
-        }
-
         if (vecinoDirectoDetectado)
         {
             UltimaConfianzaDeteccion =
