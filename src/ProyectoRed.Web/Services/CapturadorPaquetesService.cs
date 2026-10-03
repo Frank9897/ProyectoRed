@@ -12,8 +12,17 @@ namespace ProyectoRed.Web.Services;
 public class CapturadorPaquetesService
 {
     private readonly HistorialDispositivosService _historialDispositivosService;
+    private readonly FabricanteMacService _fabricanteMacService;
 
     public string UltimoOrigenDeteccion { get; private set; } = string.Empty;
+
+    public string UltimoFabricanteDeteccion { get; private set; } = string.Empty;
+
+    public string UltimaConfianzaDeteccion { get; private set; } = string.Empty;
+
+    public int UltimoPuntajeDeteccion { get; private set; }
+
+    public string UltimaRazonDeteccion { get; private set; } = string.Empty;
 
     public long UltimaDuracionDeteccionMs { get; private set; }
 
@@ -33,9 +42,11 @@ public class CapturadorPaquetesService
     private const int IntervaloSondaArpMicrosegundos = 200;
 
     public CapturadorPaquetesService(
-        HistorialDispositivosService historialDispositivosService)
+        HistorialDispositivosService historialDispositivosService,
+        FabricanteMacService fabricanteMacService)
     {
         _historialDispositivosService = historialDispositivosService;
+        _fabricanteMacService = fabricanteMacService;
     }
 
     public async Task<DispositivoDetectado> CapturarAsync(
@@ -43,6 +54,10 @@ public class CapturadorPaquetesService
         string direccionIPObjetivo = null)
     {
         UltimoOrigenDeteccion = string.Empty;
+        UltimoFabricanteDeteccion = string.Empty;
+        UltimaConfianzaDeteccion = string.Empty;
+        UltimoPuntajeDeteccion = 0;
+        UltimaRazonDeteccion = string.Empty;
         UltimaDuracionDeteccionMs = 0;
         UltimaEstimacionDeteccionMs = 0;
         UltimaFaseDeteccion = "Preparando detección";
@@ -264,12 +279,41 @@ public class CapturadorPaquetesService
                     nombreEdp ?? string.Empty;
 
                 RegistrarOrigen("EDP");
+                RegistrarFabricante("Extreme Networks");
 
                 if (!string.IsNullOrWhiteSpace(direccionGestionEdp) &&
                     string.IsNullOrWhiteSpace(direccionIPObjetivo))
                 {
                     resultado.DireccionIP =
                         direccionGestionEdp;
+
+                    return;
+                }
+            }
+
+            if (IntentarExtraerInformacionFdp(
+                    capturaBruta.Data,
+                    out string macFdp,
+                    out string nombreFdp,
+                    out string direccionGestionFdp))
+            {
+                vecinoDirectoDetectado = true;
+                macVecinoDirecto = macFdp;
+
+                resultado.DireccionMac =
+                    macFdp;
+
+                resultado.Nombre =
+                    nombreFdp ?? string.Empty;
+
+                RegistrarOrigen("FDP");
+                RegistrarFabricante("Foundry / Ruckus");
+
+                if (!string.IsNullOrWhiteSpace(direccionGestionFdp) &&
+                    string.IsNullOrWhiteSpace(direccionIPObjetivo))
+                {
+                    resultado.DireccionIP =
+                        direccionGestionFdp;
 
                     return;
                 }
@@ -289,6 +333,9 @@ public class CapturadorPaquetesService
                     macStp;
 
                 RegistrarOrigen("STP");
+                RegistrarFabricante(
+                    _fabricanteMacService.ObtenerFabricante(
+                        macStp));
 
                 return;
             }
@@ -316,6 +363,7 @@ public class CapturadorPaquetesService
                 }
 
                 RegistrarOrigen("CDP");
+                RegistrarFabricante("Cisco Systems");
 
                 if (!string.IsNullOrWhiteSpace(direccionGestionCdp) &&
                     string.IsNullOrWhiteSpace(direccionIPObjetivo))
@@ -428,6 +476,9 @@ public class CapturadorPaquetesService
             }
 
             RegistrarOrigen("ARP");
+            RegistrarFabricante(
+                _fabricanteMacService.ObtenerFabricante(
+                    macFuenteArp));
         }
 
         dispositivoSeleccionado.OnPacketArrival +=
@@ -641,7 +692,9 @@ public class CapturadorPaquetesService
                             direccionMacBroadcast,
                             direccionMacVacia,
                             direccionOrigenArp,
-                            1,
+                            objetivosArpLinkLocal.Count > 0
+                                ? 2
+                                : 1,
                             semaforoEnvioArp);
 
                     Task tareaRespaldo =
@@ -691,7 +744,8 @@ public class CapturadorPaquetesService
                         resultado,
                         respuestasArp,
                         vecinoDirectoDetectado,
-                        macVecinoDirecto);
+                        macVecinoDirecto,
+                        puertaEnlace);
                 }
             }
         }
@@ -1377,10 +1431,11 @@ public class CapturadorPaquetesService
         DispositivoDetectado resultado,
         Dictionary<uint, Dictionary<string, int>> respuestasArp,
         bool vecinoDirectoDetectado,
-        string macVecinoDirecto)
+        string macVecinoDirecto,
+        IPAddress puertaEnlace)
     {
-        List<(uint ip, string mac, int cantidad)> candidatos =
-            new List<(uint ip, string mac, int cantidad)>();
+        List<(uint ip, string mac, int respuestas, string fabricante, int puntaje)> candidatos =
+            new List<(uint ip, string mac, int respuestas, string fabricante, int puntaje)>();
 
         foreach (KeyValuePair<uint, Dictionary<string, int>> respuesta
                  in respuestasArp)
@@ -1397,10 +1452,29 @@ public class CapturadorPaquetesService
                     continue;
                 }
 
+                IPAddress ip =
+                    ConvertirAIPv4(
+                        respuesta.Key);
+
+                string fabricante =
+                    _fabricanteMacService.ObtenerFabricante(
+                        mac.Key);
+
+                int puntaje =
+                    CalcularPuntajeArp(
+                        ip,
+                        mac.Key,
+                        mac.Value,
+                        fabricante,
+                        puertaEnlace,
+                        vecinoDirectoDetectado);
+
                 candidatos.Add(
                     (respuesta.Key,
                      mac.Key,
-                     mac.Value));
+                     mac.Value,
+                     fabricante,
+                     puntaje));
             }
         }
 
@@ -1409,32 +1483,162 @@ public class CapturadorPaquetesService
             return;
         }
 
-        int mayorCantidad =
-            candidatos.Max(
-                candidato => candidato.cantidad);
-
-        List<(uint ip, string mac, int cantidad)> mejores =
+        List<(uint ip, string mac, int respuestas, string fabricante, int puntaje)> ordenados =
             candidatos
-                .Where(candidato =>
-                    candidato.cantidad == mayorCantidad)
+                .OrderByDescending(
+                    candidato => candidato.puntaje)
+                .ThenByDescending(
+                    candidato => candidato.respuestas)
                 .ToList();
 
-        // Requerimos dos respuestas del mismo candidato para reducir
-        // falsos positivos y hacemos que varios intentos produzcan el
-        // mismo resultado en lugar de depender del primero que respondió.
-        if (mayorCantidad < 2 ||
-            mejores.Count != 1)
+        var mejor =
+            ordenados[0];
+
+        var segundoPuntaje =
+            ordenados.Count > 1
+                ? ordenados[1].puntaje
+                : 0;
+
+        UltimoPuntajeDeteccion =
+            mejor.puntaje;
+
+        UltimoFabricanteDeteccion =
+            mejor.fabricante;
+
+        int diferencia =
+            mejor.puntaje -
+            segundoPuntaje;
+
+        bool suficiente =
+            mejor.puntaje >= 55;
+
+        bool claramenteMejor =
+            ordenados.Count == 1 ||
+            diferencia >= 12;
+
+        bool candidatoProbable =
+            suficiente &&
+            claramenteMejor;
+
+        if (candidatoProbable)
         {
+            resultado.DireccionIP =
+                ConvertirAIPv4(
+                    mejor.ip)
+                .ToString();
+
+            resultado.DireccionMac =
+                mejor.mac;
+
+            if (string.IsNullOrWhiteSpace(
+                    resultado.Nombre) ||
+                resultado.Nombre ==
+                    "Fabricante no identificado por OUI")
+            {
+                resultado.Nombre =
+                    mejor.fabricante;
+            }
+
+            UltimaConfianzaDeteccion =
+                "Probable";
+
+            UltimaRazonDeteccion =
+                $"Puntaje {mejor.puntaje}. " +
+                $"Respuestas: {mejor.respuestas}. " +
+                $"Fabricante: {mejor.fabricante}.";
+
             return;
         }
 
-        resultado.DireccionIP =
-            ConvertirAIPv4(
-                mejores[0].ip)
-            .ToString();
-
+        // Aunque no podamos determinar una IPv4 con suficiente confianza,
+        // conservamos la MAC del candidato mejor puntuado para entregar
+        // al técnico un dato útil sin inventar una IP.
         resultado.DireccionMac =
-            mejores[0].mac;
+            mejor.mac;
+
+        UltimaConfianzaDeteccion =
+            "Candidato observado";
+
+        UltimaRazonDeteccion =
+            $"No hubo suficiente evidencia para confirmar una IPv4. " +
+            $"Candidato MAC: {mejor.mac}. " +
+            $"Fabricante: {mejor.fabricante}.";
+    }
+
+    private int CalcularPuntajeArp(
+        IPAddress direccionIP,
+        string direccionMac,
+        int respuestas,
+        string fabricante,
+        IPAddress puertaEnlace,
+        bool vecinoDirectoDetectado)
+    {
+        int puntaje =
+            Math.Min(
+                respuestas * 15,
+                45);
+
+        if (puertaEnlace != null &&
+            direccionIP.Equals(
+                puertaEnlace))
+        {
+            puntaje += 35;
+        }
+
+        if (EsDireccionGestionComun(
+                direccionIP))
+        {
+            puntaje += 25;
+        }
+
+        if (_fabricanteMacService.EsFabricanteInfraestructura(
+                direccionMac))
+        {
+            puntaje += 25;
+        }
+
+        if (vecinoDirectoDetectado)
+        {
+            puntaje += 40;
+        }
+
+        byte ultimoOcteto =
+            direccionIP.GetAddressBytes()[3];
+
+        if (ultimoOcteto == 1 ||
+            ultimoOcteto == 254)
+        {
+            puntaje += 15;
+        }
+
+        return puntaje;
+    }
+
+    private bool EsDireccionGestionComun(
+        IPAddress direccionIP)
+    {
+        string direccion =
+            direccionIP.ToString();
+
+        string[] direcciones =
+        {
+            "10.0.0.1",
+            "10.0.1.1",
+            "10.0.0.254",
+            "10.0.1.254",
+            "172.16.0.1",
+            "172.16.0.254",
+            "192.168.0.1",
+            "192.168.0.254",
+            "192.168.1.1",
+            "192.168.1.254",
+            "192.168.100.1",
+            "192.168.100.254"
+        };
+
+        return direcciones.Contains(
+            direccion,
+            StringComparer.OrdinalIgnoreCase);
     }
 
     private List<IPAddress> ObtenerObjetivosRedLocal(
@@ -1467,6 +1671,13 @@ public class CapturadorPaquetesService
         }
 
         Agregar(puertaEnlace);
+
+        foreach (string candidato in ObtenerDireccionesGestionProbables())
+        {
+            Agregar(
+                IPAddress.Parse(
+                    candidato));
+        }
 
         if (direccionIpLocal == null ||
             mascaraRedLocal == null)
