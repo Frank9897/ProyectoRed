@@ -126,6 +126,17 @@
                         <span id="estadoDeteccion">Esperando</span>
                     </p>
 
+                    <div
+                        id="alertaResultadoDeteccion"
+                        class="alert alert-danger d-none mb-3"
+                        role="alert">
+                        <strong>No se pudo identificar el dispositivo.</strong>
+                        <div
+                            id="detalleFalloDeteccion"
+                            class="mt-1">
+                        </div>
+                    </div>
+
                     <div id="resultadoDeteccion" class="card d-none">
 
                         <div class="card-body">
@@ -151,6 +162,11 @@
                                 <span id="resultadoMac">No disponible</span>
                             </p>
 
+                            <p class="mb-2">
+                                <strong>Fabricante:</strong>
+                                <span id="resultadoFabricante">No identificado</span>
+                            </p>
+
                             <p class="mb-3">
                                 <strong>IPv4:</strong>
                                 <span id="resultadoTipoDireccion">
@@ -166,6 +182,16 @@
                             <p class="mb-3">
                                 <strong>Método:</strong>
                                 <span id="resultadoMetodo">No disponible</span>
+                            </p>
+
+                            <p class="mb-2">
+                                <strong>Confianza:</strong>
+                                <span id="resultadoConfianza">No determinada</span>
+                            </p>
+
+                            <p class="mb-2 small text-muted">
+                                Máscara local:
+                                <span id="resultadoMascaraLocal">No disponible</span>
                             </p>
 
                             <p class="mb-2 small text-muted">
