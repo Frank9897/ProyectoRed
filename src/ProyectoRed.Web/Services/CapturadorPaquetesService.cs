@@ -707,7 +707,7 @@ public class CapturadorPaquetesService
                             semaforoEnvioArp);
 
                     Task tareaLinkLocal =
-                        SondearArpAsync(
+                        SondearArpLinkLocalAdaptativoAsync(
                             dispositivoInyeccion,
                             objetivosArpLinkLocal,
                             direccionIpLocal,
@@ -715,10 +715,8 @@ public class CapturadorPaquetesService
                             direccionMacBroadcast,
                             direccionMacVacia,
                             direccionOrigenArp,
-                            objetivosArpLinkLocal.Count > 0
-                                ? 2
-                                : 1,
-                            semaforoEnvioArp);
+                            semaforoEnvioArp,
+                            respuestasArp);
 
                     Task tareaRespaldo =
                         SondearArpAsync(
@@ -2330,29 +2328,41 @@ public class CapturadorPaquetesService
         int cantidadLinkLocal,
         int cantidadRespaldo)
     {
-        double solicitudesTotales =
+        double velocidadObjetivosPorSegundo =
+            5_000.0;
+
+        double redLocal =
+            cantidadRedLocal > 0
+                ? (cantidadRedLocal * 2.0) /
+                  velocidadObjetivosPorSegundo
+                : 0.0;
+
+        double linkLocal =
+            cantidadLinkLocal > 0
+                ? cantidadLinkLocal /
+                  velocidadObjetivosPorSegundo
+                : 0.0;
+
+        double respaldo =
+            cantidadRespaldo > 0
+                ? cantidadRespaldo /
+                  velocidadObjetivosPorSegundo
+                : 0.0;
+
+        // La segunda ronda de Link-Local solo repite candidatos activos,
+        // por lo que se agrega un margen de recepción en vez de asumir
+        // otro barrido completo.
+        double faseArp =
             Math.Max(
-                cantidadRedLocal,
+                redLocal,
                 Math.Max(
-                    cantidadLinkLocal,
-                    cantidadRespaldo));
-
-        if (solicitudesTotales <= 0)
-        {
-            return 6500;
-        }
-
-        double segundosPorRonda =
-            solicitudesTotales *
-            IntervaloSondaArpMicrosegundos /
-            1_000_000.0;
+                    linkLocal,
+                    respaldo));
 
         return
             6000L +
-            (long)(
-                segundosPorRonda *
-                1000.0) +
-            500L;
+            (long)(faseArp * 1000.0) +
+            800L;
     }
 
     private long EstimarDuracionArpMs(
