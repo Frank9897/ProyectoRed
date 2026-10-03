@@ -42,7 +42,7 @@ public class AccesoDispositivoService
     /// tiempo total cuando un puerto está cerrado o filtrado.
     /// </summary>
     private static readonly TimeSpan TiempoEsperaServicio =
-        TimeSpan.FromMilliseconds(900);
+        TimeSpan.FromMilliseconds(1200);
 
     /// <summary>
     /// Evalúa si la PC puede acceder al dispositivo y detecta los métodos
@@ -450,8 +450,7 @@ public class AccesoDispositivoService
                             TargetHost =
                                 direccionIP.ToString(),
                             EnabledSslProtocols =
-                                SslProtocols.Tls12 |
-                                SslProtocols.Tls13
+                                SslProtocols.None
                         })
                     .WaitAsync(
                         TiempoEsperaServicio);
