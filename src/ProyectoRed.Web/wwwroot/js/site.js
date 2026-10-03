@@ -31,6 +31,21 @@ document.addEventListener("DOMContentLoaded", function () {
     const resultadoNombre =
         document.getElementById("resultadoNombre");
 
+    const resultadoFabricante =
+        document.getElementById("resultadoFabricante");
+
+    const resultadoConfianza =
+        document.getElementById("resultadoConfianza");
+
+    const resultadoMascaraLocal =
+        document.getElementById("resultadoMascaraLocal");
+
+    const alertaResultadoDeteccion =
+        document.getElementById("alertaResultadoDeteccion");
+
+    const detalleFalloDeteccion =
+        document.getElementById("detalleFalloDeteccion");
+
     const resultadoMetodo =
         document.getElementById("resultadoMetodo");
 
@@ -286,6 +301,15 @@ document.addEventListener("DOMContentLoaded", function () {
             const nombreDetectado =
                 datos.nombre || "";
 
+            const fabricanteDetectado =
+                datos.fabricante || "";
+
+            const confianzaDetectada =
+                datos.confianzaDeteccion || "";
+
+            const mascaraLocalDetectada =
+                datos.mascaraLocal || "";
+
             const metodoDetectado =
                 datos.metodoDeteccion || "";
 
@@ -310,7 +334,7 @@ document.addEventListener("DOMContentLoaded", function () {
                     : "Sin enlace";
 
             resultadoIp.textContent =
-                ipDetectada || "No disponible";
+                ipDetectada || "No determinada";
 
             resultadoMac.textContent =
                 macDetectada || "No disponible";
@@ -320,6 +344,18 @@ document.addEventListener("DOMContentLoaded", function () {
 
             resultadoNombre.textContent =
                 nombreDetectado || "No disponible";
+
+            resultadoFabricante.textContent =
+                fabricanteDetectado ||
+                "No identificado";
+
+            resultadoConfianza.textContent =
+                confianzaDetectada ||
+                "No determinada";
+
+            resultadoMascaraLocal.textContent =
+                mascaraLocalDetectada ||
+                "No disponible";
 
             resultadoMetodo.textContent =
                 metodoDetectado || "Búsqueda automática";
@@ -346,8 +382,26 @@ document.addEventListener("DOMContentLoaded", function () {
 
             mensajeAcceso.classList.add("d-none");
             configuracionManual.classList.add("d-none");
+            alertaResultadoDeteccion.classList.add("d-none");
+            detalleFalloDeteccion.textContent = "";
 
-            resultadoDeteccion.classList.remove("d-none");
+            if (!macDetectada) {
+                resultadoDeteccion.classList.add("d-none");
+                alertaResultadoDeteccion.classList.remove("d-none");
+                detalleFalloDeteccion.textContent =
+                    datos.mensajeEstado ||
+                    "No se encontró una MAC ni una IP del dispositivo.";
+            }
+            else {
+                resultadoDeteccion.classList.remove("d-none");
+            }
+
+            if (ipDetectada) {
+                btnAbrirInterfaz.classList.remove("d-none");
+            }
+            else {
+                btnAbrirInterfaz.classList.add("d-none");
+            }
 
             if (macDetectada) {
                 estadoDeteccion.textContent =
