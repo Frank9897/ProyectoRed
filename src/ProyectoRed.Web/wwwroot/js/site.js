@@ -79,6 +79,10 @@ document.addEventListener("DOMContentLoaded", function () {
     const configuracionMascara =
         document.getElementById("configuracionMascara");
 
+    // idEvaluacionAcceso identifica la última comprobación de servicios
+    // iniciada y evita que una respuesta tardía sobrescriba una nueva.
+    let idEvaluacionAcceso = 0;
+
     if (!interfazRed || !btnComenzar) {
         return;
     }
@@ -105,7 +109,8 @@ document.addEventListener("DOMContentLoaded", function () {
     async function comprobarAccesoDispositivoAsync(
         nombreInterfaz,
         direccionIP,
-        ventanaInterfaz = null)
+        ventanaInterfaz = null,
+        identificadorEvaluacion = idEvaluacionAcceso)
     {
         // respuesta contiene el estado de acceso que devuelve el backend.
         // Cambiarla modifica la fuente de datos usada para representar
@@ -128,6 +133,17 @@ document.addEventListener("DOMContentLoaded", function () {
             // por la interfaz.
             respuesta =
                 await respuestaHttp.json();
+
+            // Si llegó una respuesta de una ejecución anterior, no se muestra.
+            if (identificadorEvaluacion !== idEvaluacionAcceso)
+            {
+                if (ventanaInterfaz)
+                {
+                    ventanaInterfaz.close();
+                }
+
+                return null;
+            }
 
             if (!respuestaHttp.ok)
             {
@@ -415,7 +431,8 @@ document.addEventListener("DOMContentLoaded", function () {
             await comprobarAccesoDispositivoAsync(
                 nombreInterfaz,
                 direccionIP,
-                ventanaInterfaz);
+                ventanaInterfaz,
+                ++idEvaluacionAcceso);
         }
         finally
         {
@@ -616,7 +633,9 @@ document.addEventListener("DOMContentLoaded", function () {
                 // no alterar los contadores de tiempo del descubrimiento.
                 comprobarAccesoDispositivoAsync(
                     nombreInterfaz,
-                    ipDetectada);
+                    ipDetectada,
+                    null,
+                    idEvaluacionAcceso);
             }
             else {
                 btnAbrirInterfaz.classList.add("d-none");
