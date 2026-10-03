@@ -22,7 +22,7 @@ La primera versión debe ser sencilla. Su objetivo es identificar, cuando sea po
 - MAC.
 - Nombre del equipo.
 
-El escenario de uso sigue siendo una conexión Ethernet local. La detección automática utiliza la máscara de la interfaz seleccionada para realizar un sondeo ARP de la subred cuando es posible, además de LLDP/CDP, tráfico IPv4/ARP y rangos de respaldo. No se realiza detección de puertos ni inventario de servicios.
+El escenario de uso sigue siendo una conexión Ethernet local. La detección automática utiliza LLDP/CDP/EDP/FDP/STP y ARP con las heurísticas documentadas en el servicio de captura. Después de obtener una IPv4, el servicio de acceso comprueba exclusivamente esa IP para detectar HTTP, HTTPS, SSH y Telnet. No se realiza un escaneo de puertos de la red completa.
 
 ## Funcionamiento en campo
 
@@ -180,7 +180,7 @@ Ya se encuentran implementados:
 - Página inicial personalizada.
 - Modelo Models/InterfazRed.cs.
 - Servicio Services/InterfazRedService.cs.
-- Servicio Services/AccesoDispositivoService.cs para validar acceso a la interfaz del dispositivo.
+- Servicio Services/AccesoDispositivoService.cs para comprobar acceso y detectar métodos de administración del dispositivo.
 - Registro del servicio mediante inyección de dependencias.
 - Lectura de interfaces mediante NetworkInterface.GetAllNetworkInterfaces().
 - Filtro por estado operativo Up.
@@ -360,45 +360,43 @@ sin identidad obtenida
 
 Por lo tanto, la ausencia de IP/MAC ya no debe interpretarse automáticamente como ausencia física del dispositivo.
 
-## Acceso a la interfaz del dispositivo
+## Acceso y métodos de administración del dispositivo
 
-Cuando el resultado de descubrimiento contiene una IPv4, la vista permite intentar abrir la interfaz web del dispositivo.
+Cuando ProyectoRed obtiene una IPv4 del dispositivo, puede comprobar automáticamente los servicios de administración sobre esa única dirección.
 
-El flujo es:
-
-~~~text
-Vista
- |
- | GET /Home/AccesoDispositivo
- v
-HomeController
- |
- v
-AccesoDispositivoService
- |
- +--> obtiene IPv4 y máscara de la interfaz seleccionada
- +--> consulta si DHCP está habilitado
- +--> compara la red de la PC con la red del dispositivo
- |
- +--> misma red: permite abrir http://IP
- |
- +--> red diferente: informa la situación y muestra
-      una configuración IPv4 manual temporal
-~~~
-
-La comparación se realiza mediante:
+Se prueban:
 
 ~~~text
-(IPPC AND Mascara) == (IPDispositivo AND Mascara)
+HTTP    TCP 80
+HTTPS   TCP 443
+HTTP    TCP 8080
+HTTPS   TCP 8443
+SSH     TCP 22
+Telnet  TCP 23
 ~~~
 
-No se cambia automáticamente la configuración de red del sistema.
+Las pruebas de servicios se ejecutan en paralelo. HTTP y HTTPS se validan mediante una petición de solo lectura después de establecer la conexión; HTTPS realiza handshake TLS sin utilizar el certificado para decidir confianza. SSH se valida mediante su banner inicial. Telnet se considera disponible cuando TCP/23 acepta la conexión.
 
-Cuando el acceso web no puede confirmarse con la configuración actual, se propone una configuración temporal de prueba basada en una IP adyacente a la IP detectada y máscara /24. La máscara real del dispositivo no se conoce todavía; la sugerencia no pretende afirmarla como definitiva.
+El resultado se almacena en EstadoAccesoDispositivo.MetodosAcceso y la vista muestra solamente los métodos que respondieron.
 
-Antes de ofrecer la guía, el servicio prueba los puertos web habituales 443, 80, 8443 y 8080 y, cuando encuentra uno abierto, genera la URL correspondiente.
+La URL web seleccionada para el botón de apertura corresponde a un servicio HTTP/HTTPS realmente comprobado. Para SSH y Telnet se muestra una acción para copiar el comando:
 
-La puerta de enlace queda vacía porque el objetivo es acceder localmente al dispositivo.
+~~~text
+ssh IP
+telnet IP 23
+~~~
+
+La comprobación nunca recorre otras direcciones y no intenta autenticarse en el equipo.
+
+La comparación de subred continúa siendo:
+
+~~~text
+(IPPC AND MascaraPC) == (IPDispositivo AND MascaraPC)
+~~~
+
+Cuando las redes no coinciden, no se presentan los servicios como accesibles directamente y se conserva la guía de configuración IPv4 temporal.
+
+No se modifican automáticamente las configuraciones de red de Windows ni la configuración del switch.
 
 ## Próximo paso inmediato
 
