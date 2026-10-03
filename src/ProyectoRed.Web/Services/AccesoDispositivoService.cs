@@ -422,6 +422,9 @@ public class AccesoDispositivoService
             canalTCP =
                 clienteTCP.GetStream();
 
+            // canal es el flujo que utilizará la prueba HTTP/HTTPS.
+            // En HTTPS se reemplaza por sslStream para envolver el mismo
+            // transporte TCP con TLS.
             Stream canal =
                 canalTCP;
 
@@ -438,9 +441,13 @@ public class AccesoDispositivoService
                                 chain,
                                 errors) =>
                             {
-                                // Para esta comprobación no necesitamos
-                                // confiar en el certificado; solo verificamos
-                                // si existe un servicio TLS en la IP.
+                                // sender es el objeto que dispara la validación.
+                                // certificate es el certificado presentado.
+                                // chain es la cadena de certificación.
+                                // errors contiene los errores de validación.
+                                // Ninguno cambia la decisión de servicio en
+                                // esta prueba diagnóstica: solo interesa saber
+                                // si existe TLS en el dispositivo.
                                 return true;
                             });
 
@@ -459,13 +466,15 @@ public class AccesoDispositivoService
                     sslStream;
             }
 
-            // solicitud es una petición HEAD de solo lectura para comprobar
-            // que el servicio devuelve una respuesta HTTP.
-            // Cambiarla por GET produciría una petición más pesada.
+            // solicitud es una petición GET al recurso raíz. Se usa GET
+            // porque algunos paneles embebidos no implementan HEAD.
+            // Solo leemos los primeros bytes y cerramos la conexión;
+            // no descargamos la página completa.
             byte[] solicitud =
                 Encoding.ASCII.GetBytes(
-                    "HEAD / HTTP/1.0\r\n" +
+                    "GET / HTTP/1.0\r\n" +
                     $"Host: {direccionIP}\r\n" +
+                    "Accept: */*\r\n" +
                     "Connection: close\r\n\r\n");
 
             await canal.WriteAsync(
