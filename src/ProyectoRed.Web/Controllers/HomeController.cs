@@ -80,6 +80,18 @@ public class HomeController : Controller
                         resultado.DireccionIP);
             }
 
+            string mascaraLocal =
+                interfazRed?
+                    .GetIPProperties()
+                    .UnicastAddresses
+                    .FirstOrDefault(
+                        direccion =>
+                            direccion.Address.AddressFamily ==
+                            System.Net.Sockets.AddressFamily.InterNetwork)
+                    ?.IPv4Mask
+                    ?.ToString()
+                    ?? string.Empty;
+
             string mensajeEstado = string.Empty;
 
             string metodoDeteccion =
@@ -103,21 +115,22 @@ public class HomeController : Controller
                 else
                 {
                     mensajeEstado =
-                        string.Equals(
-                            _capturadorPaquetesService.UltimoOrigenDeteccion,
-                            "ARP",
-                            StringComparison.OrdinalIgnoreCase)
-                            ? "El enlace UTP está activo y se observaron respuestas ARP, " +
-                              "pero no hubo un candidato único y estable para identificar el dispositivo."
-                            : "El enlace UTP está activo, pero no se obtuvo una respuesta del dispositivo " +
-                              "mediante LLDP, CDP, STP o ARP durante la búsqueda automática.";
+                        "No se pudo identificar el dispositivo conectado. " +
+                        "No se encontró una MAC ni una IPv4 con las señales disponibles.";
                 }
             }
             else if (string.IsNullOrWhiteSpace(resultado.DireccionIP))
             {
                 mensajeEstado =
-                    "Se identificó el vecino Ethernet, pero no se obtuvo una IPv4. " +
-                    "El dispositivo puede no anunciar una dirección de gestión.";
+                    "No se pudo confirmar una IPv4 del dispositivo. " +
+                    "Se conservó la MAC del candidato más probable como dato de diagnóstico.";
+            }
+            else if (_capturadorPaquetesService.UltimaConfianzaDeteccion ==
+                     "Probable por heurística ARP")
+            {
+                mensajeEstado =
+                    "Se seleccionó la IPv4 más probable entre las respuestas ARP. " +
+                    "La IP no fue confirmada por un protocolo de vecino directo.";
             }
             else
             {
@@ -131,7 +144,18 @@ public class HomeController : Controller
                 direccionIP = resultado.DireccionIP,
                 direccionMac = resultado.DireccionMac,
                 nombre = resultado.Nombre,
+                fabricante = _capturadorPaquetesService.UltimoFabricanteDeteccion,
                 tipoDireccionIP = clasificacionDireccion,
+                mascaraLocal = mascaraLocal,
+                confianzaDeteccion =
+                    string.IsNullOrWhiteSpace(
+                        _capturadorPaquetesService.UltimaConfianzaDeteccion)
+                        ? "No determinada"
+                        : _capturadorPaquetesService.UltimaConfianzaDeteccion,
+                puntajeDeteccion =
+                    _capturadorPaquetesService.UltimoPuntajeDeteccion,
+                razonDeteccion =
+                    _capturadorPaquetesService.UltimaRazonDeteccion,
                 metodoDeteccion =
                     string.IsNullOrWhiteSpace(metodoDeteccion)
                         ? "Detección automática"
@@ -235,9 +259,21 @@ public class HomeController : Controller
                 "ARP",
                 StringComparison.OrdinalIgnoreCase))
         {
+            if (_capturadorPaquetesService.UltimaConfianzaDeteccion ==
+                "Probable por heurística ARP")
+            {
+                return "ARP (candidato más probable)";
+            }
+
+            if (_capturadorPaquetesService.UltimaConfianzaDeteccion ==
+                "Candidato observado")
+            {
+                return "ARP (MAC observada; IP no confirmada)";
+            }
+
             return tieneResultado
                 ? "ARP (sin confirmación de vecino directo)"
-                : "ARP (candidatos múltiples o sin confirmación)";
+                : "ARP (sin candidato confirmado)";
         }
 
         return origen;
