@@ -64,9 +64,6 @@ document.addEventListener("DOMContentLoaded", function () {
     const listaMetodosAcceso =
         document.getElementById("listaMetodosAcceso");
 
-    const btnAbrirInterfaz =
-        document.getElementById("btnAbrirInterfaz");
-
     const mensajeAcceso =
         document.getElementById("mensajeAcceso");
 
@@ -371,76 +368,6 @@ document.addEventListener("DOMContentLoaded", function () {
         }
     }
 
-    btnAbrirInterfaz.addEventListener("click", async function () {
-        // nombreInterfaz identifica la NIC que está físicamente conectada.
-        // Cambiarla podría dirigir las pruebas de acceso por otra interfaz.
-        const nombreInterfaz =
-            interfazRed.value;
-
-        // direccionIP es la IPv4 que ProyectoRed ya mostró como resultado.
-        // Cambiarla modifica el dispositivo contra el que se probará el acceso.
-        const direccionIP =
-            resultadoIp.textContent;
-
-        if (!nombreInterfaz ||
-            !direccionIP ||
-            direccionIP === "No disponible" ||
-            direccionIP === "No determinada")
-        {
-            mensajeAcceso.textContent =
-                "No hay una dirección IPv4 disponible para abrir el dispositivo.";
-
-            mensajeAcceso.className =
-                "alert alert-warning mt-3 mb-0";
-
-            return;
-        }
-
-        btnAbrirInterfaz.disabled =
-            true;
-
-        mensajeAcceso.classList.add(
-            "d-none");
-
-        configuracionManual.classList.add(
-            "d-none");
-
-        // ventanaInterfaz se abre durante el clic para evitar que el navegador
-        // bloquee la nueva pestaña después de la comprobación asíncrona.
-        const ventanaInterfaz =
-            window.open(
-                "about:blank",
-                "_blank");
-
-        if (!ventanaInterfaz)
-        {
-            mensajeAcceso.textContent =
-                "El navegador bloqueó la nueva pestaña. Permita ventanas emergentes para ProyectoRed.";
-
-            mensajeAcceso.className =
-                "alert alert-warning mt-3 mb-0";
-
-            btnAbrirInterfaz.disabled =
-                false;
-
-            return;
-        }
-
-        try
-        {
-            await comprobarAccesoDispositivoAsync(
-                nombreInterfaz,
-                direccionIP,
-                ventanaInterfaz,
-                ++idEvaluacionAcceso);
-        }
-        finally
-        {
-            btnAbrirInterfaz.disabled =
-                false;
-        }
-    });
-
     btnComenzar.addEventListener("click", async function () {
         const nombreInterfaz = interfazRed.value;
 
@@ -452,9 +379,16 @@ document.addEventListener("DOMContentLoaded", function () {
         }
 
         btnComenzar.disabled = true;
+
+        // idEvaluacionAcceso invalida inmediatamente cualquier comprobación
+        // de servicios perteneciente a una detección anterior.
+        idEvaluacionAcceso++;
+
         resultadoDeteccion.classList.add("d-none");
         mensajeAcceso.classList.add("d-none");
         configuracionManual.classList.add("d-none");
+        metodosAcceso.classList.add("d-none");
+        listaMetodosAcceso.innerHTML = "";
 
         tiemposDeteccion.classList.remove("d-none");
 
@@ -626,11 +560,11 @@ document.addEventListener("DOMContentLoaded", function () {
             }
 
             if (ipDetectada) {
-                btnAbrirInterfaz.classList.remove("d-none");
-
                 // La comprobación automática usa la IP ya detectada y no
                 // abre ninguna ventana. Se ejecuta en segundo plano para
                 // no alterar los contadores de tiempo del descubrimiento.
+                // idEvaluacionAcceso ya fue incrementado al iniciar esta
+                // detección para invalidar respuestas de ejecuciones previas.
                 comprobarAccesoDispositivoAsync(
                     nombreInterfaz,
                     ipDetectada,
@@ -638,7 +572,6 @@ document.addEventListener("DOMContentLoaded", function () {
                     idEvaluacionAcceso);
             }
             else {
-                btnAbrirInterfaz.classList.add("d-none");
                 metodosAcceso.classList.add("d-none");
             }
 
