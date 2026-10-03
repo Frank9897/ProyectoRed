@@ -231,7 +231,7 @@ document.addEventListener("DOMContentLoaded", function () {
         faseDeteccion.textContent =
             deteccionManual
                 ? "ARP dirigido"
-                : "LLDP/CDP/STP/EDP";
+                : "Escuchando vecinos";
 
         const actualizadorTiempo =
             setInterval(function () {
