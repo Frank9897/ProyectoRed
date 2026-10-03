@@ -4,15 +4,18 @@
 
 ProyectoRed es una aplicación web local orientada al soporte y diagnóstico de infraestructura de red.
 
-Su objetivo inicial es permitir que un técnico conecte físicamente una PC o laptop mediante un cable UTP a un dispositivo cuya dirección IP se desconoce y obtener, cuando la información esté disponible:
+Su objetivo es permitir que un técnico conecte físicamente una PC o laptop mediante un cable UTP a un dispositivo cuya dirección IP se desconoce y obtener, cuando la información esté disponible:
 
 - Dirección IP.
 - Dirección MAC.
-- Nombre del equipo.
+- Fabricante a partir del OUI.
+- Nombre del equipo cuando un protocolo de descubrimiento lo proporciona.
+
+Una vez obtenida una IPv4, ProyectoRed comprueba exclusivamente esa dirección para determinar qué métodos de administración responden: HTTP, HTTPS, SSH y Telnet.
 
 El escenario principal sigue siendo una conexión física local entre la computadora utilizada por el técnico y el dispositivo que se desea identificar.
 
-La detección automática ahora utiliza un sondeo ARP activo y acotado a la interfaz seleccionada. Primero intenta direcciones prioritarias de la red local y, si no encuentra respuesta, amplía la búsqueda a rangos privados habituales y a IPv4 Link-Local. No se realiza descubrimiento de puertos ni se enumeran servicios del dispositivo.
+La detección automática utiliza LLDP/CDP/EDP/FDP/STP y ARP activo acotado a la interfaz seleccionada. La comprobación de servicios es independiente del descubrimiento y nunca recorre otras direcciones de la red.
 
 ### Escenario de uso
 
@@ -82,17 +85,25 @@ Por este motivo, la publicación de ProyectoRed resuelve la dependencia de **.NE
 
 La primera versión será deliberadamente pequeña.
 
-El resultado esperado:
+El resultado de descubrimiento puede incluir:
 
 ~~~text
-IP       10.0.1.1
-MAC      AA:BB:CC:DD:EE:FF
-Nombre   SWITCH-PISO-1
+IP          10.0.1.1
+MAC         AA:BB:CC:DD:EE:FF
+Fabricante  HPE / Aruba
+Nombre      SWITCH-PISO-1
 ~~~
 
-El nombre puede no estar disponible y la aplicación debe poder indicar esa situación.
+Después se muestra una sección separada con los métodos de administración detectados para esa única IP:
 
-No forman parte de esta primera versión la detección de puertos, identificación del sistema operativo, SNMP, inventario avanzado, topología ni mapas de red.
+~~~text
+HTTPS  TCP 443  [Abrir]
+SSH    TCP 22   [Copiar comando]
+~~~
+
+El nombre puede no estar disponible.
+
+La comprobación de acceso no es un escaneo de puertos de la red: solo prueba los puertos de administración configurados sobre la IPv4 que ProyectoRed ya identificó. No se intenta autenticar ni descubrir credenciales.
 
 ## Arquitectura actual
 
@@ -117,10 +128,21 @@ CapturadorPaquetesService
     +--> SharpPcap
     +--> PacketDotNet
     +--> Ethernet
-    +--> LLDP
+    +--> LLDP / CDP / EDP / FDP / STP
+    +--> ARP
     |
     v
-IP + MAC + Nombre
+IP + MAC + fabricante
+    |
+    v
+AccesoDispositivoService
+    |
+    +--> HTTP / HTTPS
+    +--> SSH
+    +--> Telnet
+    |
+    v
+Métodos de acceso disponibles
 ~~~
 
 La interfaz web y la lógica de descubrimiento deben mantenerse separadas para poder ampliar el proyecto posteriormente.
@@ -180,7 +202,8 @@ Ya se encuentran implementados:
 - Apertura automática del navegador en Windows.
 - Modelo InterfazRed con nombre, IPv4, MAC y tipo.
 - Servicio InterfazRedService.
-- Servicio AccesoDispositivoService para validar el acceso a la interfaz web del dispositivo.
+- Modelo MetodoAccesoDispositivo para representar cada método de administración detectado.
+- Servicio AccesoDispositivoService para detectar métodos de administración sobre la IP del dispositivo.
 - Enumeración de interfaces mediante NetworkInterface.GetAllNetworkInterfaces().
 - Filtro por OperationalStatus.Up.
 - Filtro por NetworkInterfaceType.Ethernet.
