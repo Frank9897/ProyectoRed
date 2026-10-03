@@ -156,8 +156,6 @@ public class HomeController : Controller
                     _capturadorPaquetesService.UltimoPuntajeDeteccion,
                 razonDeteccion =
                     _capturadorPaquetesService.UltimaRazonDeteccion,
-                puntajeDeteccion =
-                    _capturadorPaquetesService.UltimoPuntajeDeteccion,
                 metodoDeteccion =
                     string.IsNullOrWhiteSpace(metodoDeteccion)
                         ? "Detección automática"
