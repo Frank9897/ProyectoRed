@@ -37,6 +37,12 @@ document.addEventListener("DOMContentLoaded", function () {
     const resultadoConfianza =
         document.getElementById("resultadoConfianza");
 
+    const resultadoPuntaje =
+        document.getElementById("resultadoPuntaje");
+
+    const resultadoRazon =
+        document.getElementById("resultadoRazon");
+
     const resultadoMascaraLocal =
         document.getElementById("resultadoMascaraLocal");
 
@@ -307,6 +313,12 @@ document.addEventListener("DOMContentLoaded", function () {
             const confianzaDetectada =
                 datos.confianzaDeteccion || "";
 
+            const puntajeDetectado =
+                Number(datos.puntajeDeteccion || 0);
+
+            const razonDetectada =
+                datos.razonDeteccion || "";
+
             const mascaraLocalDetectada =
                 datos.mascaraLocal || "";
 
@@ -352,6 +364,13 @@ document.addEventListener("DOMContentLoaded", function () {
             resultadoConfianza.textContent =
                 confianzaDetectada ||
                 "No determinada";
+
+            resultadoPuntaje.textContent =
+                puntajeDetectado.toString();
+
+            resultadoRazon.textContent =
+                razonDetectada ||
+                "No disponible";
 
             resultadoMascaraLocal.textContent =
                 mascaraLocalDetectada ||
