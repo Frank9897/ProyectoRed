@@ -16,11 +16,14 @@ Dispositivo cuya IP se desconoce
 
 El dispositivo puede ser, por ejemplo, un switch administrable, una impresora IP, un plotter, una PC, una cámara u otro dispositivo de red.
 
-La primera versión debe ser sencilla. Su objetivo es identificar, cuando sea posible:
+El núcleo de descubrimiento identifica, cuando sea posible:
 
 - IP.
 - MAC.
-- Nombre del equipo.
+- Fabricante mediante OUI.
+- Nombre del equipo cuando un protocolo de descubrimiento lo aporta.
+
+Después de una IPv4 detectada, ProyectoRed puede comprobar exclusivamente esa IP para conocer los métodos de administración disponibles.
 
 El escenario de uso sigue siendo una conexión Ethernet local. La detección automática utiliza LLDP/CDP/EDP/FDP/STP y ARP con las heurísticas documentadas en el servicio de captura. Después de obtener una IPv4, el servicio de acceso comprueba exclusivamente esa IP para detectar HTTP, HTTPS, SSH y Telnet. No se realiza un escaneo de puertos de la red completa.
 
@@ -181,6 +184,7 @@ Ya se encuentran implementados:
 - Modelo Models/InterfazRed.cs.
 - Servicio Services/InterfazRedService.cs.
 - Servicio Services/AccesoDispositivoService.cs para comprobar acceso y detectar métodos de administración del dispositivo.
+- Modelo Models/MetodoAccesoDispositivo.cs para representar cada acceso detectado.
 - Registro del servicio mediante inyección de dependencias.
 - Lectura de interfaces mediante NetworkInterface.GetAllNetworkInterfaces().
 - Filtro por estado operativo Up.
@@ -219,6 +223,10 @@ Ya se encuentran implementados:
 - Si no se puede confirmar una IPv4, la interfaz conserva la MAC/fabricante observados o muestra un cartel explícito de fallo; no presenta un resultado vacío como si fuera una detección exitosa.
 - Detección de IPv4 desde tráfico dirigido a la PC solamente cuando la asociación es útil para el diagnóstico.
 - Indicadores de tiempo transcurrido, estimación y cantidad de sondas ARP.
+- Detección automática de HTTP, HTTPS, SSH y Telnet sobre la única IPv4 descubierta.
+- Modelo MetodoAccesoDispositivo con puerto, protocolo, URL o comando de acceso.
+- Comprobaciones de servicios ejecutadas en paralelo.
+- Botones para abrir URL web confirmada y copiar comandos SSH/Telnet.
 - Correspondencia entre la interfaz de .NET y el dispositivo de captura de SharpPcap mediante GUID en Windows.
 - Captura pasiva de MAC e IPv4 del dispositivo remoto cuando aparece tráfico Ethernet/ARP/IPv4.
 - Endpoint de descubrimiento desde HomeController.
