@@ -397,6 +397,43 @@ public class CapturadorPaquetesService
                 "La MAC observada coincide exactamente con la MAC buscada.";
         }
 
+        void RegistrarRespuestaArp(
+            IPAddress direccionIp,
+            string direccionMac)
+        {
+            if (direccionIp == null ||
+                string.IsNullOrWhiteSpace(direccionMac) ||
+                EsDireccionEspecial(direccionIp))
+            {
+                return;
+            }
+
+            uint ip =
+                ConvertirIPv4(direccionIp);
+
+            lock (sincronizacionArp)
+            {
+                if (!respuestasArp.TryGetValue(
+                        ip,
+                        out Dictionary<string, int> macs))
+                {
+                    macs =
+                        new Dictionary<string, int>(
+                            StringComparer.OrdinalIgnoreCase);
+
+                    respuestasArp[ip] =
+                        macs;
+                }
+
+                macs.TryGetValue(
+                    direccionMac,
+                    out int cantidad);
+
+                macs[direccionMac] =
+                    cantidad + 1;
+            }
+        }
+
         bool EsNuestraIp(IPAddress direccionIp)
         {
             return direccionIpLocal != null &&
@@ -693,8 +730,9 @@ public class CapturadorPaquetesService
                 !EsDireccionEspecial(
                     arp.SenderProtocolAddress))
             {
-                resultado.DireccionIP =
-                    arp.SenderProtocolAddress.ToString();
+                RegistrarRespuestaArp(
+                    arp.SenderProtocolAddress,
+                    macFuenteArp);
 
                 resultado.DireccionMac =
                     macFuenteArp;
@@ -703,6 +741,8 @@ public class CapturadorPaquetesService
                     usoMacDelHistorial
                         ? "ARP por MAC (historial)"
                         : "ARP por MAC");
+
+                RegistrarCoincidenciaMac();
 
                 return;
             }
@@ -735,31 +775,9 @@ public class CapturadorPaquetesService
                     return;
                 }
 
-                uint ipSolicitud =
-                    ConvertirIPv4(
-                        arp.SenderProtocolAddress);
-
-                lock (sincronizacionArp)
-                {
-                    if (!respuestasArp.TryGetValue(
-                            ipSolicitud,
-                            out Dictionary<string, int> macsSolicitud))
-                    {
-                        macsSolicitud =
-                            new Dictionary<string, int>(
-                                StringComparer.OrdinalIgnoreCase);
-
-                        respuestasArp[ipSolicitud] =
-                            macsSolicitud;
-                    }
-
-                    macsSolicitud.TryGetValue(
-                        macFuenteArp,
-                        out int cantidadSolicitud);
-
-                    macsSolicitud[macFuenteArp] =
-                        cantidadSolicitud + 1;
-                }
+                RegistrarRespuestaArp(
+                    arp.SenderProtocolAddress,
+                    macFuenteArp);
 
                 RegistrarOrigen("ARP");
                 RegistrarFabricante(
@@ -812,27 +830,9 @@ public class CapturadorPaquetesService
                 return;
             }
 
-            lock (sincronizacionArp)
-            {
-                if (!respuestasArp.TryGetValue(
-                        ipRemota,
-                        out Dictionary<string, int> macs))
-                {
-                    macs =
-                        new Dictionary<string, int>(
-                            StringComparer.OrdinalIgnoreCase);
-
-                    respuestasArp[ipRemota] =
-                        macs;
-                }
-
-                macs.TryGetValue(
-                    macFuenteArp,
-                    out int cantidad);
-
-                macs[macFuenteArp] =
-                    cantidad + 1;
-            }
+            RegistrarRespuestaArp(
+                arp.SenderProtocolAddress,
+                macFuenteArp);
 
             RegistrarOrigen("ARP");
             RegistrarFabricante(
@@ -1101,17 +1101,31 @@ public class CapturadorPaquetesService
                 await Task.Delay(500);
 
                 if (string.IsNullOrWhiteSpace(
-                        resultado.DireccionIP) &&
-                    !busquedaPorMac)
+                        resultado.DireccionIP))
                 {
-                    ResolverResultadoArpAutomatico(
-                        resultado,
-                        respuestasArp,
-                        vecinoDirectoDetectado,
-                        macVecinoDirecto,
-                        puertaEnlace,
-                        ipsHistoricas,
-                        macsHistoricas);
+                    if (busquedaPorMac)
+                    {
+                        ResolverResultadoArpPorMac(
+                            resultado,
+                            respuestasArp,
+                            macObjetivoNormalizada,
+                            vecinoDirectoDetectado,
+                            puertaEnlace,
+                            ipsHistoricas,
+                            macsHistoricas,
+                            usoMacDelHistorial);
+                    }
+                    else
+                    {
+                        ResolverResultadoArpAutomatico(
+                            resultado,
+                            respuestasArp,
+                            vecinoDirectoDetectado,
+                            macVecinoDirecto,
+                            puertaEnlace,
+                            ipsHistoricas,
+                            macsHistoricas);
+                    }
                 }
             }
         
@@ -2226,6 +2240,162 @@ public class CapturadorPaquetesService
         }
 
         return null;
+    }
+
+    private void ResolverResultadoArpPorMac(
+        DispositivoDetectado resultado,
+        Dictionary<uint, Dictionary<string, int>> respuestasArp,
+        string macObjetivoNormalizada,
+        bool vecinoDirectoDetectado,
+        IPAddress puertaEnlace,
+        HashSet<string> ipsHistoricas,
+        HashSet<string> macsHistoricas,
+        bool usoMacDelHistorial)
+    {
+        List<(uint ip, string mac, int respuestas, string fabricante, int puntaje)> candidatos =
+            new List<(uint ip, string mac, int respuestas, string fabricante, int puntaje)>();
+
+        foreach (KeyValuePair<uint, Dictionary<string, int>> respuesta
+                 in respuestasArp)
+        {
+            foreach (KeyValuePair<string, int> mac
+                     in respuesta.Value)
+            {
+                if (!string.Equals(
+                        mac.Key,
+                        macObjetivoNormalizada,
+                        StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+
+                IPAddress ip =
+                    ConvertirAIPv4(
+                        respuesta.Key);
+
+                string fabricante =
+                    _fabricanteMacService.ObtenerFabricante(
+                        mac.Key);
+
+                bool ipHistorica =
+                    ipsHistoricas.Contains(
+                        ip.ToString());
+
+                bool macHistorica =
+                    macsHistoricas.Contains(
+                        mac.Key);
+
+                int puntaje =
+                    CalcularPuntajeArp(
+                        ip,
+                        mac.Key,
+                        mac.Value,
+                        puertaEnlace,
+                        fabricante,
+                        vecinoDirectoDetectado,
+                        ipHistorica,
+                        macHistorica);
+
+                candidatos.Add(
+                    (respuesta.Key,
+                     mac.Key,
+                     mac.Value,
+                     fabricante,
+                     puntaje));
+            }
+        }
+
+        if (candidatos.Count == 0)
+        {
+            return;
+        }
+
+        List<(uint ip, string mac, int respuestas, string fabricante, int puntaje)> ordenados =
+            candidatos
+                .OrderByDescending(
+                    candidato => candidato.puntaje)
+                .ThenByDescending(
+                    candidato => candidato.respuestas)
+                .ThenBy(
+                    candidato => candidato.ip)
+                .ToList();
+
+        var mejor =
+            ordenados[0];
+
+        int segundoPuntaje =
+            ordenados.Count > 1
+                ? ordenados[1].puntaje
+                : 0;
+
+        int diferencia =
+            mejor.puntaje -
+            segundoPuntaje;
+
+        UltimoPuntajeDeteccion =
+            mejor.puntaje;
+
+        UltimoFabricanteDeteccion =
+            mejor.fabricante;
+
+        resultado.DireccionIP =
+            ConvertirAIPv4(
+                mejor.ip)
+            .ToString();
+
+        resultado.DireccionMac =
+            mejor.mac;
+
+        if (ordenados.Count == 1 &&
+            vecinoDirectoDetectado)
+        {
+            UltimaConfianzaDeteccion =
+                "Confirmado por vecino directo";
+        }
+        else if (ordenados.Count == 1)
+        {
+            UltimaConfianzaDeteccion =
+                usoMacDelHistorial
+                    ? "Confirmado por MAC del historial"
+                    : "Confirmado por MAC objetivo";
+        }
+        else if (diferencia >= 12 &&
+                 mejor.puntaje >= 55)
+        {
+            UltimaConfianzaDeteccion =
+                "MAC confirmada; IP probable por evidencia ARP";
+        }
+        else
+        {
+            UltimaConfianzaDeteccion =
+                "MAC confirmada; IP seleccionada entre múltiples candidatas";
+        }
+
+        UltimaRazonDeteccion =
+            $"La MAC objetivo coincidió con {ordenados.Count} IPv4 candidata(s). " +
+            $"Se seleccionó {resultado.DireccionIP} con {mejor.puntaje} puntos " +
+            $"y {mejor.respuestas} respuesta(s).";
+
+        if (diferencia < 12 &&
+            ordenados.Count > 1)
+        {
+            UltimaRazonDeteccion +=
+                " Las candidatas quedaron muy próximas y la elección es probabilística.";
+        }
+
+        if (ipsHistoricas.Contains(
+                resultado.DireccionIP))
+        {
+            UltimaRazonDeteccion +=
+                " La IP apareció en el historial de esta interfaz.";
+        }
+
+        if (macsHistoricas.Contains(
+                mejor.mac))
+        {
+            UltimaRazonDeteccion +=
+                " La MAC apareció en el historial de esta interfaz.";
+        }
     }
 
     private void ResolverResultadoArpAutomatico(
