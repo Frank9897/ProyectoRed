@@ -41,7 +41,8 @@ public class HomeController : Controller
 
     public async Task<IActionResult> Descubrir(
         string nombreInterfaz,
-        string direccionIPObjetivo)
+        string direccionIPObjetivo,
+        string direccionMacObjetivo)
     {
         if (string.IsNullOrWhiteSpace(nombreInterfaz))
         {
@@ -69,7 +70,8 @@ public class HomeController : Controller
             DispositivoDetectado resultado =
                 await _capturadorPaquetesService.CapturarAsync(
                     nombreInterfaz,
-                    direccionIPObjetivo);
+                    direccionIPObjetivo,
+                    direccionMacObjetivo);
 
             string clasificacionDireccion = string.Empty;
 
@@ -107,6 +109,11 @@ public class HomeController : Controller
                     mensajeEstado =
                         "La interfaz Ethernet no tiene un enlace activo.";
                 }
+                else if (!string.IsNullOrWhiteSpace(direccionMacObjetivo))
+                {
+                    mensajeEstado =
+                        $"El enlace UTP está activo, pero no se encontró una respuesta asociada a la MAC {direccionMacObjetivo}.";
+                }
                 else if (!string.IsNullOrWhiteSpace(direccionIPObjetivo))
                 {
                     mensajeEstado =
@@ -136,6 +143,21 @@ public class HomeController : Controller
                     "Se seleccionó la IPv4 con mayor evidencia disponible entre las respuestas ARP. " +
                     "La confianza indica una inferencia del programa y no una confirmación de vecino directo.";
             }
+            else if (_capturadorPaquetesService.UltimoUsoHistorial)
+            {
+                mensajeEstado =
+                    "Se reutilizó la MAC registrada en el historial y se buscó su IPv4 actual.";
+            }
+            else if (_capturadorPaquetesService.UltimoCriterioBusqueda == "MAC")
+            {
+                mensajeEstado =
+                    "Se identificó el dispositivo mediante la MAC indicada.";
+            }
+            else if (_capturadorPaquetesService.UltimoCriterioBusqueda == "IP")
+            {
+                mensajeEstado =
+                    "Se identificó el dispositivo mediante la IP indicada.";
+            }
             else
             {
                 mensajeEstado =
@@ -149,6 +171,8 @@ public class HomeController : Controller
                 direccionMac = resultado.DireccionMac,
                 nombre = resultado.Nombre,
                 fabricante = _capturadorPaquetesService.UltimoFabricanteDeteccion,
+                criterioBusqueda = _capturadorPaquetesService.UltimoCriterioBusqueda,
+                usoHistorial = _capturadorPaquetesService.UltimoUsoHistorial,
                 tipoDireccionIP = clasificacionDireccion,
                 mascaraLocal = mascaraLocal,
                 confianzaDeteccion =
@@ -230,6 +254,7 @@ public class HomeController : Controller
     {
         return await Descubrir(
             nombreInterfaz,
+            string.Empty,
             string.Empty);
     }
 
