@@ -56,17 +56,40 @@
                 <div class="border rounded p-3 mb-3">
 
                     <h3 class="h6 mb-2">
-                        Detección automática y manual
+                        Búsqueda de dispositivo
                     </h3>
 
                     <p class="small text-muted mb-3">
-                        Deje la IP vacía para iniciar la búsqueda automática.
-                        ProyectoRed escucha LLDP/CDP/STP y realiza
-                        sondeos ARP sobre la red local cuando es posible.
-                        No modifica la configuración de Windows.
+                        Puede buscar automáticamente, por IP o por MAC.
+                        La búsqueda por MAC utiliza la identidad física del equipo
+                        para localizar su IPv4 actual.
                     </p>
 
-                    <div class="mb-0">
+                    <div class="mb-3">
+                        <label
+                            for="modoBusqueda"
+                            class="form-label">
+                            Modo de búsqueda
+                        </label>
+
+                        <select
+                            id="modoBusqueda"
+                            class="form-select">
+                            <option value="automatica">
+                                Automática
+                            </option>
+                            <option value="ip">
+                                Por IP
+                            </option>
+                            <option value="mac">
+                                Por MAC
+                            </option>
+                        </select>
+                    </div>
+
+                    <div
+                        id="campoIpBusqueda"
+                        class="mb-0 d-none">
 
                         <label
                             for="direccionIpObjetivo"
@@ -81,8 +104,33 @@
                             placeholder="Ej. 192.168.0.1">
 
                         <div class="form-text">
-                            Opcional. Si se completa, se realiza una única consulta ARP
-                            contra esa IPv4 y no se ejecuta el sondeo automático.
+                            Realiza una consulta ARP dirigida contra esa IPv4.
+                            Si ya existe un registro histórico para esa IP,
+                            ProyectoRed puede reutilizar su MAC y buscar la IPv4 actual.
+                        </div>
+
+                    </div>
+
+                    <div
+                        id="campoMacBusqueda"
+                        class="mb-0 d-none">
+
+                        <label
+                            for="direccionMacObjetivo"
+                            class="form-label">
+                            MAC del dispositivo
+                        </label>
+
+                        <input
+                            id="direccionMacObjetivo"
+                            type="text"
+                            class="form-control"
+                            placeholder="Ej. AA:BB:CC:DD:EE:FF">
+
+                        <div class="form-text">
+                            Acepta AA:BB:CC:DD:EE:FF, AA-BB-CC-DD-EE-FF
+                            o AABBCCDDEEFF. La MAC permite localizar la IP
+                            aunque el dispositivo haya cambiado de red.
                         </div>
 
                     </div>
@@ -177,6 +225,13 @@
                             <p class="mb-3">
                                 <strong>Método:</strong>
                                 <span id="resultadoMetodo">No disponible</span>
+                            </p>
+
+                            <p class="mb-3">
+                                <strong>Criterio:</strong>
+                                <span id="resultadoCriterioBusqueda">
+                                    No disponible
+                                </span>
                             </p>
 
                             <p class="mb-2 small text-muted">
