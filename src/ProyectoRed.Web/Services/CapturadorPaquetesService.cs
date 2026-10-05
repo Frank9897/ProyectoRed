@@ -756,11 +756,20 @@ public class CapturadorPaquetesService
                     arp.SenderProtocolAddress))
             {
                 if (vecinoDirectoDetectado &&
-                    !string.Equals(
+                    string.Equals(
                         macFuenteArp,
                         macVecinoDirecto,
                         StringComparison.OrdinalIgnoreCase))
                 {
+                    RegistrarRespuestaArp(
+                        arp.SenderProtocolAddress,
+                        macFuenteArp);
+
+                    RegistrarOrigen("ARP");
+                    RegistrarFabricante(
+                        _fabricanteMacService.ObtenerFabricante(
+                            macFuenteArp));
+
                     return;
                 }
 
@@ -798,11 +807,6 @@ public class CapturadorPaquetesService
                     _fabricanteMacService.ObtenerFabricante(
                         macFuenteArp));
 
-                return;
-            }
-
-            if (vecinoDirectoDetectado)
-            {
                 return;
             }
 
@@ -2318,8 +2322,29 @@ public class CapturadorPaquetesService
             return;
         }
 
+        bool huboCoincidenciaMacVecino =
+            vecinoDirectoDetectado &&
+            candidatos.Any(
+                candidato =>
+                    string.Equals(
+                        candidato.mac,
+                        macVecinoDirecto,
+                        StringComparison.OrdinalIgnoreCase));
+
+        List<(uint ip, string mac, int respuestas, string fabricante, int puntaje)> candidatosParaResolver =
+            huboCoincidenciaMacVecino
+                ? candidatos
+                    .Where(
+                        candidato =>
+                            string.Equals(
+                                candidato.mac,
+                                macVecinoDirecto,
+                                StringComparison.OrdinalIgnoreCase))
+                    .ToList()
+                : candidatos;
+
         List<(uint ip, string mac, int respuestas, string fabricante, int puntaje)> ordenados =
-            candidatos
+            candidatosParaResolver
                 .OrderByDescending(
                     candidato => candidato.puntaje)
                 .ThenByDescending(
@@ -2514,10 +2539,18 @@ public class CapturadorPaquetesService
         resultado.DireccionMac =
             mejor.mac;
 
-        if (vecinoDirectoDetectado)
+        if (vecinoDirectoDetectado &&
+            huboCoincidenciaMacVecino)
         {
             UltimaConfianzaDeteccion =
                 "Confirmado por vecino directo";
+        }
+        else if (vecinoDirectoDetectado &&
+                 diferencia >= 12 &&
+                 mejor.puntaje >= 55)
+        {
+            UltimaConfianzaDeteccion =
+                "Vecino L2 confirmado; IP probable por ARP";
         }
         else if (diferencia >= 12 &&
                  mejor.puntaje >= 55)
@@ -2541,6 +2574,14 @@ public class CapturadorPaquetesService
             $"{mejor.puntaje} puntos, " +
             $"{mejor.respuestas} respuesta(s), " +
             $"fabricante: {mejor.fabricante}.";
+
+        if (vecinoDirectoDetectado &&
+            !huboCoincidenciaMacVecino)
+        {
+            UltimaRazonDeteccion +=
+                " La MAC anunciada por el protocolo L2 no apareció en ARP; " +
+                "se amplió la selección a las candidatas ARP para recuperar la IPv4.";
+        }
 
         if (diferencia < 12 &&
             ordenados.Count > 1)
