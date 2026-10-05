@@ -1,7 +1,15 @@
+using System.Collections.Concurrent;
+
 namespace ProyectoRed.Web.Services;
 
 public sealed class FabricanteMacService
 {
+    private readonly ConcurrentDictionary<string, string> _cacheFabricantes =
+        new(StringComparer.OrdinalIgnoreCase);
+
+    private readonly ConcurrentDictionary<string, string> _cacheOuis =
+        new(StringComparer.OrdinalIgnoreCase);
+
     private static readonly Dictionary<string, (string Fabricante, bool Infraestructura)> Ouis =
         new(StringComparer.OrdinalIgnoreCase)
         {
@@ -41,6 +49,28 @@ public sealed class FabricanteMacService
 
     public string ObtenerFabricante(string direccionMac)
     {
+        string clave =
+            direccionMac?.Trim() ??
+            string.Empty;
+
+        return _cacheFabricantes.GetOrAdd(
+            clave,
+            ObtenerFabricanteSinCache);
+    }
+
+    public bool EsFabricanteInfraestructura(string direccionMac)
+    {
+        string oui =
+            ObtenerOui(direccionMac);
+
+        return Ouis.TryGetValue(
+            oui,
+            out (string Fabricante, bool Infraestructura) datos) &&
+               datos.Infraestructura;
+    }
+
+    private string ObtenerFabricanteSinCache(string direccionMac)
+    {
         string oui =
             ObtenerOui(
                 direccionMac);
@@ -52,19 +82,18 @@ public sealed class FabricanteMacService
             : "Fabricante no identificado por OUI";
     }
 
-    public bool EsFabricanteInfraestructura(string direccionMac)
+    private string ObtenerOui(string direccionMac)
     {
-        string oui =
-            ObtenerOui(
-                direccionMac);
+        string clave =
+            direccionMac?.Trim() ??
+            string.Empty;
 
-        return Ouis.TryGetValue(
-            oui,
-            out (string Fabricante, bool Infraestructura) datos) &&
-               datos.Infraestructura;
+        return _cacheOuis.GetOrAdd(
+            clave,
+            ObtenerOuiSinCache);
     }
 
-    private string ObtenerOui(string direccionMac)
+    private string ObtenerOuiSinCache(string direccionMac)
     {
         if (string.IsNullOrWhiteSpace(direccionMac))
         {
