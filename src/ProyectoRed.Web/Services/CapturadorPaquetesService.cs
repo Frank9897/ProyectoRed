@@ -965,17 +965,7 @@ public class CapturadorPaquetesService
             // Si solo tenemos ARP, no existe confirmación física del
             // vecino. Las respuestas se consolidan y se puntúan para
             // escoger el candidato con mayor evidencia disponible.
-            if ((busquedaPorMac || 
-                 !vecinoDirectoDetectado ||
-                 string.IsNullOrWhiteSpace(resultado.DireccionIP)) &&
-                !busquedaPorIp)
-            {
-                Console.WriteLine(
-                    busquedaPorIp
-                        ? $"Detección dirigida iniciada para {direccionIPObjetivo}."
-                        : $"Sin confirmación LLDP/CDP/EDP/FDP/STP: recurriendo a ARP. Sondas: {objetivosArpActivos.Count}.");
-
-                if (busquedaPorIp)
+            if (busquedaPorIp)
             {
                 Console.WriteLine(
                     $"Detección dirigida iniciada para {direccionIPObjetivo}.");
