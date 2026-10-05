@@ -25,7 +25,7 @@ El núcleo de descubrimiento identifica, cuando sea posible:
 
 Después de una IPv4 detectada, ProyectoRed puede comprobar exclusivamente esa IP para conocer los métodos de administración disponibles.
 
-El escenario de uso sigue siendo una conexión Ethernet local. La detección automática utiliza LLDP/CDP/EDP/FDP/STP y ARP con las heurísticas documentadas en el servicio de captura. Después de obtener una IPv4, el servicio de acceso comprueba exclusivamente esa IP para detectar HTTP, HTTPS, SSH y Telnet. No se realiza un escaneo de puertos de la red completa.
+El escenario de uso sigue siendo una conexión Ethernet local. La detección automática utiliza LLDP/CDP/EDP/FDP/NDP/HPSW/STP y ARP con las heurísticas documentadas en el servicio de captura. Después de obtener una IPv4, el servicio de acceso comprueba exclusivamente esa IP para detectar HTTP, HTTPS, SSH y Telnet. No se realiza un escaneo de puertos de la red completa.
 
 ## Funcionamiento en campo
 
@@ -367,6 +367,30 @@ sin identidad obtenida
 ~~~
 
 Por lo tanto, la ausencia de IP/MAC ya no debe interpretarse automáticamente como ausencia física del dispositivo.
+
+## Tecnologías legacy agregadas para localizar al vecino
+
+La detección mantiene LLDP como estándar principal y suma tecnologías históricas de descubrimiento de capa 2 para ampliar la cobertura de equipos antiguos.
+
+### NDP / HGMPv2
+
+Los switches H3C documentan NDP como un protocolo para descubrir vecinos directamente conectados. En HGMPv2, H3C documenta 01:80:C2:00:00:0A como dirección multicast predeterminada y permite otras direcciones del rango 01:80:C2:00:00:20-2F.
+
+ProyectoRed usa estas tramas como señal adicional de vecino local. Por seguridad, el parser agregado no inventa un formato interno para NDP que no esté suficientemente respaldado: conserva la MAC de origen y deja que el ARP posterior, ya restringido a esa MAC, complete la IPv4 cuando sea posible.
+
+### HPSW
+
+Se agregó reconocimiento del HP Switch Protocol sobre HP Extended LLC. Cuando la trama contiene los TLV conocidos, ProyectoRed puede obtener:
+
+- nombre del dispositivo;
+- IPv4;
+- MAC propia del dispositivo.
+
+HPSW queda como ruta legacy complementaria y no reemplaza LLDP/CDP.
+
+### Dell ISDP
+
+ISDP de Dell utiliza compatibilidad con CDP. La ruta CDP existente ya interpreta ese formato de trama, por lo que ISDP queda cubierto sin duplicar el parser.
 
 ## Acceso y métodos de administración del dispositivo
 
