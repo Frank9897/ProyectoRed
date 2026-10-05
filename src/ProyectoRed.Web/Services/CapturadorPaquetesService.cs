@@ -755,6 +755,15 @@ public class CapturadorPaquetesService
                 !EsDireccionEspecial(
                     arp.SenderProtocolAddress))
             {
+                if (vecinoDirectoDetectado &&
+                    !string.Equals(
+                        macFuenteArp,
+                        macVecinoDirecto,
+                        StringComparison.OrdinalIgnoreCase))
+                {
+                    return;
+                }
+
                 RegistrarRespuestaArp(
                     arp.SenderProtocolAddress,
                     macFuenteArp);
