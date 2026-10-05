@@ -152,6 +152,15 @@ Métodos de acceso disponibles
 
 La interfaz web y la lógica de descubrimiento deben mantenerse separadas para poder ampliar el proyecto posteriormente.
 
+## Optimizaciones actuales
+
+La lógica de descubrimiento mantiene intacta la estrategia de fiabilidad y solo optimiza trabajo repetitivo durante la ejecución:
+
+- Las MAC ya normalizadas se reutilizan mediante una caché en memoria durante cada detección.
+- Fabricante y OUI se almacenan en caché en memoria para evitar repetir el procesamiento de las mismas MAC observadas.
+- No se cambia el barrido ARP, la búsqueda Link-Local, las redes de respaldo, las rondas ni la heurística de candidatos.
+- En modo MAC no se detiene la búsqueda al encontrar la primera IP: se conserva la posibilidad de observar varias IPv4 asociadas a la misma MAC y posteriormente aplicar el criterio de selección correspondiente.
+
 ## Tecnologías
 
 ### Entorno de desarrollo
