@@ -1141,6 +1141,8 @@ public class CapturadorPaquetesService
             }
         }
 
+        }
+
         finally
         {
             dispositivoSeleccionado.StopCapture();
