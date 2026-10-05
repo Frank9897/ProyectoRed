@@ -221,6 +221,7 @@ public class CapturadorPaquetesService
             new DispositivoDetectado();
 
         bool vecinoDirectoDetectado = false;
+        bool lldpDetectado = false;
         string macVecinoDirecto = string.Empty;
         string origenDeteccion = string.Empty;
 
@@ -462,6 +463,7 @@ public class CapturadorPaquetesService
                 (!busquedaPorMac || MacCoincideObjetivo(macLldpDirecta)))
             {
                 vecinoDirectoDetectado = true;
+                lldpDetectado = true;
                 macVecinoDirecto = macLldpDirecta;
 
                 resultado.DireccionMac =
@@ -899,10 +901,15 @@ public class CapturadorPaquetesService
                     () => vecinoDirectoDetectado,
                     TimeSpan.FromSeconds(6));
 
-                if (vecinoDirectoDetectado)
+                if (lldpDetectado)
                 {
                     Console.WriteLine(
-                        "Vecino directo confirmado por LLDP/CDP/EDP/FDP/STP antes de recurrir a ARP.");
+                        "LLDP detectado; se finaliza el descubrimiento sin sondeo ARP.");
+                }
+                else if (vecinoDirectoDetectado)
+                {
+                    Console.WriteLine(
+                        "Vecino directo confirmado por otro protocolo L2; se continúa con ARP si hace falta la IPv4.");
                 }
             }
 
@@ -1030,9 +1037,10 @@ public class CapturadorPaquetesService
                     await Task.Delay(100);
                 }
             }
-            else if (!vecinoDirectoDetectado ||
-                     string.IsNullOrWhiteSpace(
-                         resultado.DireccionIP))
+            else if (!lldpDetectado &&
+                     (!vecinoDirectoDetectado ||
+                      string.IsNullOrWhiteSpace(
+                          resultado.DireccionIP)))
             {
                 Console.WriteLine(
                     busquedaPorMac
