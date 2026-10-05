@@ -176,6 +176,15 @@ ProyectoRed/
             +-- PublishProfiles/
                 +-- WindowsSelfContained.pubxml
 
+## Optimizaciones acordadas
+
+La optimización se realiza sin cambiar la estrategia de fiabilidad del descubrimiento:
+
+- Caché en memoria de MAC ya normalizadas durante cada detección.
+- Caché en memoria de fabricante/OUI para evitar reprocesar MAC repetidas.
+- No modificar por ahora rangos ARP, búsqueda 169.254/16, redes de respaldo, rondas, timeouts ni heurística.
+- En búsqueda por MAC no asumir que la primera IPv4 encontrada es la correcta. Una misma MAC puede aparecer asociada a varias IPv4; esas candidatas deben conservarse para la selección por evidencia/probabilidad.
+
 ## Estado actual
 
 Ya se encuentran implementados:
