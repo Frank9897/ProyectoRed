@@ -2449,15 +2449,6 @@ public class CapturadorPaquetesService
             foreach (KeyValuePair<string, int> mac
                      in respuesta.Value)
             {
-                if (vecinoDirectoDetectado &&
-                    !string.Equals(
-                        mac.Key,
-                        macVecinoDirecto,
-                        StringComparison.OrdinalIgnoreCase))
-                {
-                    continue;
-                }
-
                 IPAddress ip =
                     ConvertirAIPv4(
                         respuesta.Key);
@@ -2499,8 +2490,29 @@ public class CapturadorPaquetesService
             return;
         }
 
+        bool huboCoincidenciaMacVecino =
+            vecinoDirectoDetectado &&
+            candidatos.Any(
+                candidato =>
+                    string.Equals(
+                        candidato.mac,
+                        macVecinoDirecto,
+                        StringComparison.OrdinalIgnoreCase));
+
+        List<(uint ip, string mac, int respuestas, string fabricante, int puntaje)> candidatosParaResolver =
+            huboCoincidenciaMacVecino
+                ? candidatos
+                    .Where(
+                        candidato =>
+                            string.Equals(
+                                candidato.mac,
+                                macVecinoDirecto,
+                                StringComparison.OrdinalIgnoreCase))
+                    .ToList()
+                : candidatos;
+
         List<(uint ip, string mac, int respuestas, string fabricante, int puntaje)> ordenados =
-            candidatos
+            candidatosParaResolver
                 .OrderByDescending(
                     candidato => candidato.puntaje)
                 .ThenByDescending(
