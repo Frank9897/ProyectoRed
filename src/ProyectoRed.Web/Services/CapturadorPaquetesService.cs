@@ -1107,6 +1107,10 @@ public class CapturadorPaquetesService
                 IPAddress.Parse(
                     direccionIPObjetivo);
 
+            objetivosArpActivos.Add(
+                ConvertirIPv4(
+                    objetivoHistorial));
+
             for (int intento = 1;
                  intento <= 3 &&
                  string.IsNullOrWhiteSpace(
