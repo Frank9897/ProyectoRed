@@ -135,8 +135,38 @@ public class CapturadorPaquetesService
                 "La IP del dispositivo indicada manualmente no es una IPv4 de destino válida.");
         }
 
+        Dictionary<string, string> cacheMacNormalizadas =
+            new Dictionary<string, string>(
+                StringComparer.OrdinalIgnoreCase);
+
+        string NormalizarMacCacheada(string direccionMac)
+        {
+            if (string.IsNullOrWhiteSpace(direccionMac))
+            {
+                return string.Empty;
+            }
+
+            string clave =
+                direccionMac.Trim();
+
+            if (cacheMacNormalizadas.TryGetValue(
+                    clave,
+                    out string macNormalizada))
+            {
+                return macNormalizada;
+            }
+
+            macNormalizada =
+                NormalizarMac(direccionMac);
+
+            cacheMacNormalizadas[clave] =
+                macNormalizada;
+
+            return macNormalizada;
+        }
+
         string macObjetivoNormalizada =
-            NormalizarMac(direccionMacObjetivo);
+            NormalizarMacCacheada(direccionMacObjetivo);
 
         if (!string.IsNullOrWhiteSpace(direccionMacObjetivo) &&
             string.IsNullOrWhiteSpace(macObjetivoNormalizada))
@@ -232,7 +262,7 @@ public class CapturadorPaquetesService
                     .FirstOrDefault();
 
             string macHistorial =
-                NormalizarMac(
+                NormalizarMacCacheada(
                     registroHistorico?.DireccionMac);
 
             if (!string.IsNullOrWhiteSpace(macHistorial))
@@ -339,7 +369,7 @@ public class CapturadorPaquetesService
         {
             return busquedaPorMac &&
                    string.Equals(
-                       NormalizarMac(direccionMac),
+                       NormalizarMacCacheada(direccionMac),
                        macObjetivoNormalizada,
                        StringComparison.OrdinalIgnoreCase);
         }
