@@ -320,6 +320,64 @@ public class CapturadorPaquetesService
                 }
             }
 
+            // HPSW es un protocolo legacy de switches HP que viaja
+            // sobre HP Extended LLC. Cuando aparece en la interfaz física,
+            // identifica directamente al equipo vecino y puede aportar
+            // nombre e IP de administración.
+            if (IntentarExtraerInformacionHpsw(
+                    capturaBruta.Data,
+                    out string macHpsw,
+                    out string nombreHpsw,
+                    out string direccionGestionHpsw))
+            {
+                vecinoDirectoDetectado = true;
+                macVecinoDirecto = macHpsw;
+
+                resultado.DireccionMac =
+                    macHpsw;
+
+                resultado.Nombre =
+                    nombreHpsw ?? string.Empty;
+
+                RegistrarOrigen("HPSW");
+                RegistrarFabricante(
+                    _fabricanteMacService.ObtenerFabricante(
+                        macHpsw));
+
+                if (!string.IsNullOrWhiteSpace(direccionGestionHpsw) &&
+                    string.IsNullOrWhiteSpace(direccionIPObjetivo))
+                {
+                    resultado.DireccionIP =
+                        direccionGestionHpsw;
+
+                    return;
+                }
+            }
+
+            // NDP/HGMPv2 es un mecanismo legacy de H3C/3Com para
+            // anunciar información del vecino en capa 2. En esta primera
+            // incorporación no intentamos interpretar campos internos
+            // que no están suficientemente documentados; usamos la trama
+            // como prueba fuerte de vecino local y conservamos la MAC de
+            // origen. Después el ARP queda restringido a esa misma MAC,
+            // lo que permite recuperar la IPv4 de administración sin
+            // convertir el descubrimiento en un escaneo diferente.
+            if (IntentarExtraerInformacionNdp(
+                    capturaBruta.Data,
+                    out string macNdp))
+            {
+                vecinoDirectoDetectado = true;
+                macVecinoDirecto = macNdp;
+
+                resultado.DireccionMac =
+                    macNdp;
+
+                RegistrarOrigen("NDP/HGMPv2");
+                RegistrarFabricante(
+                    _fabricanteMacService.ObtenerFabricante(
+                        macNdp));
+            }
+
             // EDP es un protocolo propietario de Extreme Networks
             // encapsulado mediante LLC/SNAP. Cuando está presente,
             // identifica directamente al switch vecino y puede transportar
@@ -649,7 +707,7 @@ public class CapturadorPaquetesService
             if (!busquedaManual)
             {
                 UltimaFaseDeteccion =
-                    "Escuchando LLDP/CDP/EDP/FDP/STP";
+                    "Escuchando LLDP/CDP/EDP/FDP/NDP/HPSW/STP";
 
                 // Fase 1: escuchamos sin enviar nada todavía. La mayoría
                 // de los switches administrables emiten su primer anuncio
@@ -862,7 +920,7 @@ public class CapturadorPaquetesService
             {
                 Console.WriteLine(
                     "No se generaron objetivos ARP automáticos. " +
-                    "Se continuará únicamente con LLDP, CDP y captura pasiva.");
+                    "Se continuará únicamente con LLDP, CDP, EDP, FDP, NDP/HPSW, STP y captura pasiva.");
             }
 
             UltimaFaseDeteccion =
@@ -1326,6 +1384,226 @@ public class CapturadorPaquetesService
         }
 
         return true;
+    }
+
+    /// <summary>
+    /// Detecta el HP Switch Protocol (HPSW) legacy encapsulado en
+    /// HP Extended LLC y extrae los datos seguros para identificación:
+    /// MAC del equipo, nombre y una posible IPv4.
+    /// </summary>
+    private bool IntentarExtraerInformacionHpsw(
+        byte[] datos,
+        out string macOrigen,
+        out string nombreDispositivo,
+        out string direccionGestion)
+    {
+        macOrigen = null;
+        nombreDispositivo = null;
+        direccionGestion = null;
+
+        // El encabezado Ethernet (14) + LLC (3) + HPEXT (7)
+        // + version/type (2) requiere al menos 26 bytes.
+        if (datos == null ||
+            datos.Length < 26)
+        {
+            return false;
+        }
+
+        ushort longitudEthernet =
+            (ushort)((datos[12] << 8) | datos[13]);
+
+        // HPSW usa una trama IEEE 802.3 con longitud, no un EtherType.
+        if (longitudEthernet == 0 ||
+            longitudEthernet > 1500)
+        {
+            return false;
+        }
+
+        // DSAP/SSAP 0xF8 corresponden a HP Extended LLC.
+        // El bit bajo del SSAP puede variar por command/response.
+        if (datos[14] != 0xF8 ||
+            (datos[15] & 0xFE) != 0xF8)
+        {
+            return false;
+        }
+
+        // Control LLC UI habitual para esta encapsulación.
+        if (datos[16] != 0x03)
+        {
+            return false;
+        }
+
+        // HPEXT:
+        //   bytes 17-19 = reservado
+        //   bytes 20-21 = DXSAP
+        //   bytes 22-23 = SXSAP
+        ushort dxsap =
+            (ushort)((datos[20] << 8) | datos[21]);
+
+        if (dxsap != 0x0623)
+        {
+            return false;
+        }
+
+        macOrigen =
+            FormatearMac(
+                new PhysicalAddress(
+                    datos.Skip(6).Take(6).ToArray()));
+
+        int posicion = 24;
+
+        // En HPSW los primeros dos bytes son Version y Type.
+        // Después comienza una secuencia de TLV de 1 byte de tipo +
+        // 1 byte de longitud + valor.
+        posicion += 2;
+
+        while (posicion + 2 <= datos.Length)
+        {
+            int tipo =
+                datos[posicion];
+
+            int longitud =
+                datos[posicion + 1];
+
+            posicion += 2;
+
+            if (longitud < 1 ||
+                posicion + longitud > datos.Length)
+            {
+                break;
+            }
+
+            // Tipo 1 = Device Name.
+            if (tipo == 0x01 &&
+                string.IsNullOrWhiteSpace(
+                    nombreDispositivo))
+            {
+                nombreDispositivo =
+                    System.Text.Encoding.ASCII.GetString(
+                        datos,
+                        posicion,
+                        longitud)
+                    .TrimEnd(' ', ' ');
+            }
+
+            // Tipo 5 = IP Address.
+            if (tipo == 0x05 &&
+                longitud == 4)
+            {
+                IPAddress ip =
+                    new IPAddress(
+                        datos.AsSpan(
+                                posicion,
+                                4)
+                            .ToArray());
+
+                if (!EsDireccionEspecial(ip))
+                {
+                    direccionGestion =
+                        ip.ToString();
+                }
+            }
+
+            // Tipo 14 = Own MAC Address.
+            // Preferimos esta MAC cuando está presente porque HPSW la
+            // publica explícitamente como identidad del equipo.
+            if (tipo == 0x0E &&
+                longitud == 6)
+            {
+                macOrigen =
+                    FormatearMac(
+                        new PhysicalAddress(
+                            datos.AsSpan(
+                                    posicion,
+                                    6)
+                                .ToArray()));
+            }
+
+            posicion += longitud;
+        }
+
+        return true;
+    }
+
+    /// <summary>
+    /// Detecta una trama de HGMPv2 asociada al mecanismo NDP legacy de
+    /// H3C/3Com. La documentación de H3C permite una dirección multicast
+    /// por defecto 01:80:C2:00:00:0A y también otras del rango
+    /// 01:80:C2:00:00:20-2F.
+    ///
+    /// No interpreta el payload interno en esta etapa. La trama se usa
+    /// como señal de vecino local y su MAC de origen se emplea para
+    /// restringir el ARP posterior a ese mismo equipo.
+    /// </summary>
+    private bool IntentarExtraerInformacionNdp(
+        byte[] datos,
+        out string macOrigen)
+    {
+        macOrigen = null;
+
+        if (datos == null ||
+            datos.Length < 14)
+        {
+            return false;
+        }
+
+        // HGMPv2 usa el espacio de multicast documentado por H3C.
+        if (!EsDireccionMacHgmp(
+                datos,
+                0))
+        {
+            return false;
+        }
+
+        macOrigen =
+            FormatearMac(
+                new PhysicalAddress(
+                    datos.Skip(6).Take(6).ToArray()));
+
+        if (string.IsNullOrWhiteSpace(macOrigen))
+        {
+            return false;
+        }
+
+        return true;
+    }
+
+    /// <summary>
+    /// Comprueba si los seis bytes de una posición corresponden a una
+    /// dirección multicast reservada por HGMPv2/NDP.
+    /// </summary>
+    private bool EsDireccionMacHgmp(
+        byte[] datos,
+        int posicion)
+    {
+        if (datos == null ||
+            posicion < 0 ||
+            posicion + 6 > datos.Length)
+        {
+            return false;
+        }
+
+        // 01:80:C2:00:00:0A es la dirección multicast HGMPv2/NDP
+        // documentada por H3C como valor predeterminado.
+        if (datos[posicion] == 0x01 &&
+            datos[posicion + 1] == 0x80 &&
+            datos[posicion + 2] == 0xC2 &&
+            datos[posicion + 3] == 0x00 &&
+            datos[posicion + 4] == 0x00 &&
+            datos[posicion + 5] == 0x0A)
+        {
+            return true;
+        }
+
+        // H3C permite configurar otras direcciones dentro de
+        // 01:80:C2:00:00:20-2F para los paquetes HGMPv2.
+        return datos[posicion] == 0x01 &&
+               datos[posicion + 1] == 0x80 &&
+               datos[posicion + 2] == 0xC2 &&
+               datos[posicion + 3] == 0x00 &&
+               datos[posicion + 4] == 0x00 &&
+               datos[posicion + 5] >= 0x20 &&
+               datos[posicion + 5] <= 0x2F;
     }
 
     private bool IntentarExtraerInformacionFdp(
