@@ -185,6 +185,7 @@ La optimización se realiza sin cambiar la estrategia de fiabilidad del descubri
 - No modificar por ahora rangos ARP, búsqueda 169.254/16, redes de respaldo, rondas, timeouts ni heurística.
 - En búsqueda por MAC no asumir que la primera IPv4 encontrada es la correcta. Una misma MAC puede aparecer asociada a varias IPv4; esas candidatas deben conservarse para la selección por evidencia/probabilidad.
 - Si LLDP/CDP/EDP/FDP/NDP/HPSW/STP ya confirmó al vecino directo por su MAC, una ARP proveniente de esa misma MAC debe conservarse aunque la IPv4 no esté dentro de los rangos activos del sondeo. Las múltiples IPv4 se resuelven después por evidencia/probabilidad.
+- La MAC anunciada por L2 no debe ser un filtro absoluto para la ARP automática: si coincide, la evidencia es fuerte; si no coincide, las candidatas ARP siguen disponibles para recuperar la IPv4 del vecino.
 
 ## Estado actual
 
