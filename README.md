@@ -161,6 +161,7 @@ La lógica de descubrimiento mantiene intacta la estrategia de fiabilidad y solo
 - No se cambia el barrido ARP, la búsqueda Link-Local, las redes de respaldo, las rondas ni la heurística de candidatos.
 - En modo MAC no se detiene la búsqueda al encontrar la primera IP: se conserva la posibilidad de observar varias IPv4 asociadas a la misma MAC y posteriormente aplicar el criterio de selección correspondiente.
 - Cuando un protocolo L2 ya confirmó al vecino directo por su MAC, las respuestas ARP de esa misma MAC se conservan aunque su IPv4 quede fuera de los rangos activos del sondeo. Si aparecen varias IPv4, se selecciona la candidata con mayor evidencia.
+- Si el protocolo L2 anuncia una MAC diferente de la utilizada por el equipo en ARP, las respuestas ARP no se descartan. Cuando existe coincidencia de MAC se prioriza; cuando no existe, la selección vuelve a todas las candidatas ARP para evitar perder la IPv4 del vecino.
 
 ## Tecnologías
 
