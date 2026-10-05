@@ -2322,29 +2322,8 @@ public class CapturadorPaquetesService
             return;
         }
 
-        bool huboCoincidenciaMacVecino =
-            vecinoDirectoDetectado &&
-            candidatos.Any(
-                candidato =>
-                    string.Equals(
-                        candidato.mac,
-                        macVecinoDirecto,
-                        StringComparison.OrdinalIgnoreCase));
-
-        List<(uint ip, string mac, int respuestas, string fabricante, int puntaje)> candidatosParaResolver =
-            huboCoincidenciaMacVecino
-                ? candidatos
-                    .Where(
-                        candidato =>
-                            string.Equals(
-                                candidato.mac,
-                                macVecinoDirecto,
-                                StringComparison.OrdinalIgnoreCase))
-                    .ToList()
-                : candidatos;
-
         List<(uint ip, string mac, int respuestas, string fabricante, int puntaje)> ordenados =
-            candidatosParaResolver
+            candidatos
                 .OrderByDescending(
                     candidato => candidato.puntaje)
                 .ThenByDescending(
@@ -2586,14 +2565,6 @@ public class CapturadorPaquetesService
             $"{mejor.puntaje} puntos, " +
             $"{mejor.respuestas} respuesta(s), " +
             $"fabricante: {mejor.fabricante}.";
-
-        if (vecinoDirectoDetectado &&
-            !huboCoincidenciaMacVecino)
-        {
-            UltimaRazonDeteccion +=
-                " La MAC anunciada por el protocolo L2 no apareció en ARP; " +
-                "se amplió la selección a las candidatas ARP para recuperar la IPv4.";
-        }
 
         if (diferencia < 12 &&
             ordenados.Count > 1)
