@@ -212,7 +212,7 @@ public class CapturadorPaquetesService
         bool usoMacDelHistorial = false;
 
         if (!usoMacIndicada &&
-            !!busquedaPorIp)
+            !string.IsNullOrWhiteSpace(direccionIPObjetivo))
         {
             RegistroDispositivo registroHistorico =
                 historial
@@ -349,15 +349,6 @@ public class CapturadorPaquetesService
             return direccionMacLocal != null &&
                    direccionMacLocal.GetAddressBytes().Length == 6 &&
                    direccionMac.Equals(direccionMacLocal);
-        }
-
-        bool MacCoincideObjetivo(string direccionMac)
-        {
-            return busquedaPorMac &&
-                   string.Equals(
-                       NormalizarMac(direccionMac),
-                       macObjetivoNormalizada,
-                       StringComparison.OrdinalIgnoreCase);
         }
 
         void RegistrarCoincidenciaMac()
