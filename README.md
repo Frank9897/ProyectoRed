@@ -125,6 +125,11 @@ InterfazRedService
     v
 CapturadorPaquetesService
     |
+    +--> búsqueda automática
+    +--> búsqueda por IP
+    +--> búsqueda por MAC
+    +--> reutilización de MAC histórica
+    |
     +--> SharpPcap
     +--> PacketDotNet
     +--> Ethernet
@@ -509,39 +514,82 @@ CDP permite identificar el vecino Cisco mediante su MAC y el TLV Device-ID.
 
 Cuando no aparece LLDP/CDP, ProyectoRed puede obtener una respuesta ARP pasiva si el dispositivo emite tráfico visible para la interfaz. Para evitar tomar tráfico unicast ajeno como si fuera el objetivo, la captura no necesita trabajar en modo promiscuo para este escenario.
 
-### Detección manual
+### Modos de búsqueda
 
-La interfaz permite introducir:
-
-~~~text
-IP del dispositivo
-~~~
-
-Cuando se completa, ProyectoRed realiza una **única consulta ARP dirigida a esa IP**.
-
-Ya no se solicita una “IP local de prueba”. Si la PC tiene una IPv4, se utiliza esa dirección como origen del ARP. Si no tiene IPv4, la sonda se envía con origen 0.0.0.0, sin modificar la configuración de Windows.
-
-La detección automática es la opción recomendada para el escenario de cable UTP directo. La detección manual queda como mecanismo de prueba puntual cuando el técnico ya conoce una IP concreta.
-
-Además, la interfaz diferencia entre:
+La interfaz permite elegir un criterio antes de iniciar la detección:
 
 ~~~text
-Enlace UTP activo
-    +
-Dispositivo identificado
-
-y
-
-Enlace UTP activo
-    +
-Sin información identificable todavía
+Automática
+Por IP
+Por MAC
 ~~~
 
-Esto evita mostrar **“no hay dispositivo conectado”** cuando en realidad el enlace Ethernet está activo pero no se obtuvo una identidad de capa 2/3.
+#### Búsqueda automática
+
+No se conoce ni la IP ni la MAC. ProyectoRed mantiene el comportamiento actual:
+
+~~~text
+LLDP / CDP / EDP / FDP / NDP / HPSW / STP
+                    ↓
+              captura pasiva
+                    ↓
+                   ARP
+                    ↓
+          consolidación y heurística
+~~~
+
+La búsqueda ARP puede ampliarse a la subred local, Link-Local 169.254/16 y rangos de respaldo según el escenario. La identificación heurística sigue asociando la IP y la MAC observadas y no toma el primer ARP como si fuera automáticamente el dispositivo conectado.
+
+#### Búsqueda por IP
+
+Cuando el técnico conoce la IP, ProyectoRed realiza una consulta ARP dirigida contra esa única dirección para obtener su MAC y los datos asociados que puedan obtenerse.
+
+Si existe un registro histórico de la misma IP en la interfaz seleccionada, ProyectoRed puede recuperar únicamente la MAC guardada y utilizarla para buscar la **IPv4 actual**. La IP histórica no se considera permanente porque puede haber cambiado.
+
+Si la MAC histórica ya no responde, se mantiene un fallback mediante ARP directo a la IP solicitada.
+
+#### Búsqueda por MAC
+
+Cuando el técnico conoce la MAC que figura en el chasis o etiqueta del equipo, puede introducirla como:
+
+~~~text
+AA:BB:CC:DD:EE:FF
+AA-BB-CC-DD-EE-FF
+AABBCCDDEEFF
+~~~
+
+ProyectoRed normaliza la dirección y acepta como coincidencia solamente una MAC observada que sea igual a la MAC buscada.
+
+El flujo es:
+
+~~~text
+MAC conocida
+     ↓
+LLDP / CDP / EDP / FDP / NDP / HPSW / STP
+     ↓
+ARP sobre los mismos rangos de búsqueda
+     ↓
+¿MAC observada == MAC buscada?
+     ↓
+     Sí
+     ↓
+IPv4 + MAC + nombre + fabricante
+~~~
+
+Una MAC conocida permite identificar el par IP/MAC sin depender de la puntuación heurística cuando el equipo responde con esa dirección. El modo por MAC también amplía la búsqueda a los rangos de respaldo ya existentes para cubrir equipos cuya IP fija esté fuera de la red configurada en la PC.
 
 ## Próximo paso
 
-Con la parte de despliegue y acceso a la interfaz preparada, el siguiente trabajo sigue siendo comprobar el descubrimiento con un dispositivo conectado directamente por UTP y, a partir de los resultados, mejorar la forma de presentar IP/MAC/Nombre sin convertir ProyectoRed en un scanner de subred.
+La búsqueda por IP, la búsqueda por MAC y la reutilización del historial ya forman parte del flujo de descubrimiento. La siguiente etapa es validar los tres caminos con hardware real:
+
+~~~text
+1. IP conocida → MAC actual
+2. MAC conocida → IP actual
+3. Sin IP/MAC → descubrimiento automático y heurística
+4. IP histórica → MAC histórica → búsqueda de IP actual
+~~~
+
+Las pruebas deben contemplar dispositivos con IP fija, con y sin puerta de enlace, PC con DHCP y equipos cuya IP esté en otra red. El objetivo sigue siendo mantener el descubrimiento masivo como fallback sin presentar una inferencia ARP como certeza física.
 
 ## Forma de desarrollo
 
