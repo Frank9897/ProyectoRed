@@ -10,8 +10,20 @@ document.addEventListener("DOMContentLoaded", function () {
     const estadoInterfaz =
         document.getElementById("estadoInterfaz");
 
+    const modoBusqueda =
+        document.getElementById("modoBusqueda");
+
+    const campoIpBusqueda =
+        document.getElementById("campoIpBusqueda");
+
+    const campoMacBusqueda =
+        document.getElementById("campoMacBusqueda");
+
     const direccionIpObjetivo =
         document.getElementById("direccionIpObjetivo");
+
+    const direccionMacObjetivo =
+        document.getElementById("direccionMacObjetivo");
 
     const resultadoDeteccion =
         document.getElementById("resultadoDeteccion");
@@ -42,6 +54,9 @@ document.addEventListener("DOMContentLoaded", function () {
 
     const resultadoMetodo =
         document.getElementById("resultadoMetodo");
+
+    const resultadoCriterioBusqueda =
+        document.getElementById("resultadoCriterioBusqueda");
 
     const tiemposDeteccion =
         document.getElementById("tiemposDeteccion");
@@ -83,6 +98,49 @@ document.addEventListener("DOMContentLoaded", function () {
     if (!interfazRed || !btnComenzar) {
         return;
     }
+
+    function actualizarCamposBusqueda()
+    {
+        const modo =
+            modoBusqueda
+                ? modoBusqueda.value
+                : "automatica";
+
+        if (campoIpBusqueda)
+        {
+            campoIpBusqueda.classList.toggle(
+                "d-none",
+                modo !== "ip");
+        }
+
+        if (campoMacBusqueda)
+        {
+            campoMacBusqueda.classList.toggle(
+                "d-none",
+                modo !== "mac");
+        }
+
+        if (direccionIpObjetivo)
+        {
+            direccionIpObjetivo.disabled =
+                modo !== "ip";
+        }
+
+        if (direccionMacObjetivo)
+        {
+            direccionMacObjetivo.disabled =
+                modo !== "mac";
+        }
+    }
+
+    if (modoBusqueda)
+    {
+        modoBusqueda.addEventListener(
+            "change",
+            actualizarCamposBusqueda);
+    }
+
+    actualizarCamposBusqueda();
 
     interfazRed.addEventListener("change", function () {
         const opcion =
@@ -395,13 +453,45 @@ document.addEventListener("DOMContentLoaded", function () {
         const inicioDeteccion =
             performance.now();
 
-        const deteccionManual =
-            direccionIpObjetivo.value.trim().length > 0;
+        const modo =
+            modoBusqueda
+                ? modoBusqueda.value
+                : "automatica";
+
+        const busquedaPorIp =
+            modo === "ip";
+
+        const busquedaPorMac =
+            modo === "mac";
+
+        if (busquedaPorIp &&
+            !direccionIpObjetivo.value.trim())
+        {
+            estadoDeteccion.textContent =
+                "Ingrese la IP del dispositivo.";
+
+            btnComenzar.disabled = false;
+
+            return;
+        }
+
+        if (busquedaPorMac &&
+            !direccionMacObjetivo.value.trim())
+        {
+            estadoDeteccion.textContent =
+                "Ingrese la MAC del dispositivo.";
+
+            btnComenzar.disabled = false;
+
+            return;
+        }
 
         const estimacionInicialMs =
-            deteccionManual
+            busquedaPorIp
                 ? 1500
-                : 20000;
+                : busquedaPorMac
+                    ? 30000
+                    : 20000;
 
         tiempoEstimado.textContent =
             "~" +
@@ -413,9 +503,11 @@ document.addEventListener("DOMContentLoaded", function () {
             "0.0 s";
 
         faseDeteccion.textContent =
-            deteccionManual
+            busquedaPorIp
                 ? "ARP dirigido"
-                : "Escuchando vecinos";
+                : busquedaPorMac
+                    ? "Buscando vecino / MAC"
+                    : "Escuchando vecinos";
 
         const actualizadorTiempo =
             setInterval(function () {
@@ -428,22 +520,28 @@ document.addEventListener("DOMContentLoaded", function () {
                         .toFixed(1) +
                     " s";
 
-                if (!deteccionManual)
+                if (!busquedaPorIp)
                 {
                     if (transcurrido < 6000)
                     {
                         faseDeteccion.textContent =
-                            "Escuchando vecinos";
+                            busquedaPorMac
+                                ? "Buscando vecino / MAC"
+                                : "Escuchando vecinos";
                     }
                     else if (transcurrido < estimacionInicialMs)
                     {
                         faseDeteccion.textContent =
-                            "Sondeo ARP";
+                            busquedaPorMac
+                                ? "Búsqueda por MAC"
+                                : "Sondeo ARP";
                     }
                     else
                     {
                         faseDeteccion.textContent =
-                            "Sondeo ARP (tiempo extendido)";
+                            busquedaPorMac
+                                ? "Búsqueda por MAC (tiempo extendido)"
+                                : "Sondeo ARP (tiempo extendido)";
                     }
                 }
             }, 100);
@@ -456,10 +554,16 @@ document.addEventListener("DOMContentLoaded", function () {
                 "nombreInterfaz",
                 nombreInterfaz);
 
-            if (direccionIpObjetivo.value.trim()) {
+            if (busquedaPorIp) {
                 parametros.set(
                     "direccionIPObjetivo",
                     direccionIpObjetivo.value.trim());
+            }
+
+            if (busquedaPorMac) {
+                parametros.set(
+                    "direccionMacObjetivo",
+                    direccionMacObjetivo.value.trim());
             }
 
             const respuesta = await fetch(
@@ -527,6 +631,23 @@ document.addEventListener("DOMContentLoaded", function () {
 
             resultadoMetodo.textContent =
                 metodoDetectado || "Búsqueda automática";
+
+            if (resultadoCriterioBusqueda)
+            {
+                resultadoCriterioBusqueda.textContent =
+                    datos.criterioBusqueda ||
+                    "Automática";
+            }
+
+            if (typeof datos.tiempoEstimadoMs === "number" &&
+                datos.tiempoEstimadoMs > 0)
+            {
+                tiempoEstimado.textContent =
+                    "~" +
+                    (datos.tiempoEstimadoMs / 1000)
+                        .toFixed(0) +
+                    " s";
+            }
 
             resultadoSondasArp.textContent =
                 cantidadSondas.toLocaleString("es-AR");
