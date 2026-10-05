@@ -755,26 +755,6 @@ public class CapturadorPaquetesService
                 !EsDireccionEspecial(
                     arp.SenderProtocolAddress))
             {
-                if (vecinoDirectoDetectado &&
-                    string.Equals(
-                        macFuenteArp,
-                        macVecinoDirecto,
-                        StringComparison.OrdinalIgnoreCase))
-                {
-                    resultado.DireccionIP =
-                        arp.SenderProtocolAddress.ToString();
-
-                    resultado.DireccionMac =
-                        macFuenteArp;
-
-                    RegistrarOrigen("ARP");
-                    RegistrarFabricante(
-                        _fabricanteMacService.ObtenerFabricante(
-                            macFuenteArp));
-
-                    return;
-                }
-
                 RegistrarRespuestaArp(
                     arp.SenderProtocolAddress,
                     macFuenteArp);
@@ -787,13 +767,32 @@ public class CapturadorPaquetesService
                 return;
             }
 
-            // Si LLDP/CDP identificó un vecino directo pero todavía no
-            // tenemos su IP, solo aceptamos ARP proveniente de esa misma MAC.
+            // Si LLDP/CDP identificó un vecino directo, conservamos cualquier
+            // ARP procedente de esa misma MAC aunque la IPv4 no pertenezca a
+            // los rangos que ProyectoRed pudo generar para el sondeo activo.
+            // La selección final puede comparar varias IPv4 asociadas al vecino.
             if (vecinoDirectoDetectado &&
-                !string.Equals(
+                string.Equals(
                     macFuenteArp,
                     macVecinoDirecto,
                     StringComparison.OrdinalIgnoreCase))
+            {
+                RegistrarRespuestaArp(
+                    arp.SenderProtocolAddress,
+                    macFuenteArp);
+
+                resultado.DireccionMac =
+                    macFuenteArp;
+
+                RegistrarOrigen("ARP");
+                RegistrarFabricante(
+                    _fabricanteMacService.ObtenerFabricante(
+                        macFuenteArp));
+
+                return;
+            }
+
+            if (vecinoDirectoDetectado)
             {
                 return;
             }
