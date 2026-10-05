@@ -1427,12 +1427,11 @@ public class CapturadorPaquetesService
             return false;
         }
 
-        // Control LLC UI habitual para esta encapsulación.
-        if (datos[16] != 0x03)
-        {
-            return false;
-        }
-
+        // El control LLC puede variar según el tipo de trama.
+        // No lo fijamos a un valor concreto porque el dissector de
+        // HP Extended LLC de Wireshark recibe el payload después del
+        // encabezado LLC para distintos tipos de tramas de información.
+        //
         // HPEXT:
         //   bytes 17-19 = reservado
         //   bytes 20-21 = DXSAP
