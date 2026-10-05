@@ -15,7 +15,7 @@ Una vez obtenida una IPv4, ProyectoRed comprueba exclusivamente esa dirección p
 
 El escenario principal sigue siendo una conexión física local entre la computadora utilizada por el técnico y el dispositivo que se desea identificar.
 
-La detección automática utiliza LLDP/CDP/EDP/FDP/STP y ARP activo acotado a la interfaz seleccionada. La comprobación de servicios es independiente del descubrimiento y nunca recorre otras direcciones de la red.
+La detección automática utiliza LLDP, CDP, EDP, FDP, NDP/HGMPv2, HPSW, STP y ARP activo acotado a la interfaz seleccionada. La comprobación de servicios es independiente del descubrimiento y nunca recorre otras direcciones de la red.
 
 ### Escenario de uso
 
@@ -128,7 +128,7 @@ CapturadorPaquetesService
     +--> SharpPcap
     +--> PacketDotNet
     +--> Ethernet
-    +--> LLDP / CDP / EDP / FDP / STP
+    +--> LLDP / CDP / EDP / FDP / NDP-HGMPv2 / HPSW / STP
     +--> ARP
     |
     v
@@ -242,6 +242,8 @@ La captura ya se utiliza para obtener información del dispositivo remoto en una
 La estrategia combina descubrimiento pasivo y activo:
 
 - LLDP/CDP para identificar al vecino directamente conectado.
+- NDP/HGMPv2 para conservar la señal de vecino local de switches H3C/3Com legacy.
+- HPSW para identificar switches HP legacy que utilicen HP Extended LLC.
 - Tráfico IPv4/ARP observado durante la captura.
 - Sondeo ARP automático de la red IPv4 local cuando existe una IPv4 y máscara.
 - Direcciones administrativas habituales cuando la PC está en otra red o todavía no tiene IPv4.
@@ -250,6 +252,30 @@ La estrategia combina descubrimiento pasivo y activo:
 Cuando existe una IPv4 local, la máscara de la interfaz determina qué subred se puede sondear automáticamente. Para redes hasta /16 el sondeo puede recorrer los hosts utilizables. Redes mucho más grandes no se recorren completas para evitar una operación excesiva.
 
 Una conexión Ethernet en estado UP confirma el enlace físico, pero por sí sola no proporciona la IPv4 del equipo remoto. Por eso la versión actual ya no depende únicamente de esperar tráfico espontáneo.
+
+## Protocolos adicionales de descubrimiento de capa 2
+
+Además de LLDP/CDP/EDP/FDP/STP, el capturador incorpora señales legacy para mejorar la localización del equipo conectado directamente por UTP.
+
+### NDP / HGMPv2 de H3C y 3Com
+
+Los switches H3C documentan NDP como un protocolo de capa 2 para descubrir vecinos directamente conectados. H3C también documenta que los paquetes HGMPv2 utilizan por defecto la dirección multicast 01:80:C2:00:00:0A, con otras direcciones configurables dentro de 01:80:C2:00:00:20-2F.
+
+ProyectoRed utiliza esa trama como señal de vecino local y conserva la MAC de origen. En esta etapa no interpreta campos internos de NDP que no están suficientemente documentados; la MAC obtenida se usa para restringir el ARP posterior a ese mismo vecino y recuperar su IPv4 cuando el equipo responda por ARP.
+
+### HPSW de HP
+
+HPSW (HP Switch Protocol) es un mecanismo legacy que Wireshark documenta sobre HP Extended LLC. El formato incluye TLV para nombre del dispositivo, versión, IP y MAC propia del equipo.
+
+ProyectoRed reconoce la encapsulación HP Extended LLC y extrae, cuando están presentes, nombre, IPv4 y MAC del propio equipo. Esta ruta está pensada especialmente para switches HP antiguos y no reemplaza LLDP.
+
+### Dell ISDP
+
+ISDP de Dell es compatible con el formato de descubrimiento de CDP. La lógica existente que interpreta las tramas CDP ya cubre el formato de cableado empleado por ISDP/CDP; no se agrega un segundo parser que duplique esa misma estructura.
+
+### Alcance
+
+Estas incorporaciones son exclusivamente señales adicionales de descubrimiento. No reemplazan LLDP, no modifican la estrategia ARP existente y no convierten ProyectoRed en un escáner de la red.
 
 ## Alcance de la primera versión
 
