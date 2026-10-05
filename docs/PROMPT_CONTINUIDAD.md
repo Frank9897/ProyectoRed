@@ -123,6 +123,11 @@ InterfazRedService
     v
 CapturadorPaquetesService
     |
+    +--> búsqueda automática
+    +--> búsqueda por IP
+    +--> búsqueda por MAC
+    +--> reutilización de MAC histórica
+    |
     +--> SharpPcap
     +--> PacketDotNet
     +--> Ethernet
@@ -231,6 +236,12 @@ Ya se encuentran implementados:
 - Captura pasiva de MAC e IPv4 del dispositivo remoto cuando aparece tráfico Ethernet/ARP/IPv4.
 - Endpoint de descubrimiento desde HomeController.
 - Botón Comenzar conectado a la detección desde la interfaz web.
+- Modos de búsqueda en la interfaz: automática, por IP y por MAC.
+- Normalización y validación de MAC para búsquedas directas.
+- Búsqueda por MAC filtrando las evidencias ARP y de descubrimiento por la MAC objetivo.
+- Uso de los rangos de respaldo existentes también cuando se conoce la MAC.
+- Reutilización del historial: una IP histórica puede aportar su MAC para buscar la IPv4 actual.
+- Fallback a ARP dirigido sobre la IP original si la MAC recuperada del historial ya no responde.
 - Botón para abrir la interfaz web del dispositivo detectado.
 - Endpoint Home/AccesoDispositivo.
 - Comparación de red IPv4 mediante IP y máscara.
@@ -340,33 +351,71 @@ Sin IPv4 local:
 
 La captura se abre en modo promiscuo para maximizar la visibilidad de las tramas Ethernet útiles para LLDP/CDP y diagnóstico de capa 2. La asociación final de una IP con el dispositivo sigue estando restringida por MAC, IP objetivo y/o destino de la trama.
 
-### Detección manual
+### Modos de búsqueda
 
-La interfaz de ProyectoRed ofrece un único campo:
-
-- IP del dispositivo.
-
-La **IP del dispositivo** permite hacer una consulta ARP puntual contra una única dirección conocida.
-
-No se solicita una IP local de prueba. Si la PC tiene una IPv4 se usa automáticamente como origen; si no tiene IPv4, la sonda ARP puede utilizar 0.0.0.0 sin modificar la configuración de Windows.
-
-Cuando no se conoce la IP del dispositivo, la aplicación utiliza la detección automática: LLDP, CDP, tráfico IPv4, ARP pasivo, sondeo ARP de la subred local y rangos de respaldo.
-
-La interfaz también diferencia el estado del enlace del resultado de identificación:
+La interfaz de ProyectoRed permite seleccionar uno de tres criterios:
 
 ~~~text
-Enlace UTP activo
-    +
-IP/MAC/Nombre identificado
-
-o
-
-Enlace UTP activo
-    +
-sin identidad obtenida
+Automática
+Por IP
+Por MAC
 ~~~
 
-Por lo tanto, la ausencia de IP/MAC ya no debe interpretarse automáticamente como ausencia física del dispositivo.
+#### Automática
+
+Cuando no se conoce ninguna identidad concreta, se mantiene el flujo actual:
+
+~~~text
+LLDP / CDP / EDP / FDP / NDP / HPSW / STP
+                    ↓
+              captura pasiva
+                    ↓
+             sondeo ARP
+                    ↓
+       consolidación y heurística
+~~~
+
+La búsqueda ARP puede recorrer la subred local, Link-Local 169.254/16 y rangos de respaldo según las condiciones ya implementadas. El resultado heurístico sigue diferenciándose de una confirmación por vecino directo.
+
+#### Por IP
+
+Cuando el técnico conoce la IPv4 del dispositivo, ProyectoRed realiza una consulta ARP dirigida a esa única IP para obtener la MAC actual y los demás datos asociados disponibles.
+
+Antes de iniciar el flujo de descubrimiento, el historial de la interfaz seleccionada se consulta por esa IP. Si existe un registro, se recupera **solo la MAC** y se utiliza como identidad para buscar su IPv4 actual. La IP guardada no se considera permanente.
+
+Si la búsqueda por la MAC histórica no encuentra el equipo, se realiza un fallback mediante ARP dirigido a la IP solicitada. Esto permite seguir funcionando aunque la MAC haya cambiado.
+
+#### Por MAC
+
+Cuando el técnico conoce la MAC del chasis o etiqueta del equipo, puede introducir:
+
+~~~text
+AA:BB:CC:DD:EE:FF
+AA-BB-CC-DD-EE-FF
+AABBCCDDEEFF
+~~~
+
+ProyectoRed normaliza la dirección y solamente considera coincidencias que correspondan exactamente con esa MAC.
+
+El flujo es:
+
+~~~text
+MAC conocida
+     ↓
+LLDP / CDP / EDP / FDP / NDP / HPSW / STP
+     ↓
+ARP
+     ↓
+¿MAC observada == MAC buscada?
+     ↓
+     Sí
+     ↓
+IPv4 + MAC + nombre + fabricante
+~~~
+
+Cuando la MAC es conocida, ya no es necesario escoger entre varios candidatos mediante la puntuación heurística: una respuesta con la misma MAC establece directamente el vínculo IP/MAC.
+
+La búsqueda por MAC utiliza también los rangos de respaldo existentes para cubrir el escenario en el que la IP fija del dispositivo se encuentra fuera de la subred actualmente configurada en la PC.
 
 ## Tecnologías legacy agregadas para localizar al vecino
 
@@ -432,19 +481,19 @@ No se modifican automáticamente las configuraciones de red de Windows ni la con
 
 ## Próximo paso inmediato
 
-La publicación Windows y la captura con Npcap ya fueron verificadas.
+La búsqueda automática, la búsqueda por IP, la búsqueda por MAC y la reutilización del historial ya están incorporadas.
 
-La siguiente etapa es validar la detección automática con dispositivos de IP fija en subredes típicas, con y sin puerta de enlace, comprobando especialmente el caso en que Windows obtiene una IPv4 por DHCP y el equipo remoto mantiene una IP fija.
+La siguiente validación debe comprobar con hardware real:
 
-La captura actual trabaja durante unos segundos y recopila, cuando existen:
+~~~text
+1. IP conocida → MAC actual.
+2. MAC conocida → IP actual.
+3. Sin IP/MAC → descubrimiento automático y heurística.
+4. IP histórica → MAC histórica → búsqueda de IPv4 actual.
+5. MAC histórica obsoleta → fallback a la IP original.
+~~~
 
-- MAC remota desde Ethernet.
-- IPv4 desde ARP o IPv4, asociada a la MAC que originó ese mismo tráfico.
-- Nombre desde LLDP System Name, asociado a la misma MAC.
-
-No se debe tomar el primer paquete ARP de una red compartida como identificación automática del dispositivo.
-
-La estrategia automática usa la máscara real de la interfaz cuando existe para construir la subred local. La búsqueda Link-Local mantiene el rango 169.254/16 como respaldo ampliado y no depende de la máscara de la PC. El sondeo de esa red y el sondeo Link-Local 169.254/16 se ejecutan concurrentemente después de la fase inicial de protocolos de capa 2. En Windows, las solicitudes se agrupan con SendQueue para reducir el coste de transmisión individual. SharpPcap documenta que SendQueue puede transmitir una colección de paquetes y que la ruta nativa de Npcap reduce el coste de múltiples envíos individuales. La configuración temporal de acceso es distinta: propone /24 como primera prueba junto con una IP adyacente a la IP detectada.
+Las pruebas deben incluir dispositivos con IP fija, con y sin puerta de enlace, PC con DHCP y equipos cuya IP esté en otra red. La prioridad es comprobar precisión y evitar que una heurística ARP sea presentada como una identificación física confirmada.
 
 ## Forma de desarrollo
 
