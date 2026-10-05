@@ -32,6 +32,10 @@ public class CapturadorPaquetesService
 
     public int UltimaCantidadSondasArp { get; private set; }
 
+    public string UltimoCriterioBusqueda { get; private set; } = string.Empty;
+
+    public bool UltimoUsoHistorial { get; private set; }
+
     // Estimación/fallback del envío individual fuera de Windows.
     private const int TamanoLoteArp = 256;
 
@@ -53,7 +57,8 @@ public class CapturadorPaquetesService
 
     public async Task<DispositivoDetectado> CapturarAsync(
         string nombreInterfaz,
-        string direccionIPObjetivo = null)
+        string direccionIPObjetivo = null,
+        string direccionMacObjetivo = null)
     {
         UltimoOrigenDeteccion = string.Empty;
         UltimoFabricanteDeteccion = string.Empty;
@@ -63,6 +68,8 @@ public class CapturadorPaquetesService
         UltimaDuracionDeteccionMs = 0;
         UltimaEstimacionDeteccionMs = 0;
         UltimaFaseDeteccion = "Preparando detección";
+        UltimoCriterioBusqueda = "Automática";
+        UltimoUsoHistorial = false;
         Interlocked.Exchange(
             ref _sondasArpActuales,
             0);
@@ -128,6 +135,17 @@ public class CapturadorPaquetesService
                 "La IP del dispositivo indicada manualmente no es una IPv4 de destino válida.");
         }
 
+        string macObjetivoNormalizada =
+            NormalizarMac(direccionMacObjetivo);
+
+        if (!string.IsNullOrWhiteSpace(direccionMacObjetivo) &&
+            string.IsNullOrWhiteSpace(macObjetivoNormalizada))
+        {
+            throw new InvalidOperationException(
+                "La MAC del dispositivo indicada no tiene un formato válido. " +
+                "Use AA:BB:CC:DD:EE:FF, AA-BB-CC-DD-EE-FF o AABBCCDDEEFF.");
+        }
+
         IPInterfaceProperties propiedadesIp =
             interfazRed.GetIPProperties();
 
@@ -187,6 +205,63 @@ public class CapturadorPaquetesService
 
         List<RegistroDispositivo> historial =
             await _historialDispositivosService.ObtenerHistorialAsync();
+
+        bool usoMacIndicada =
+            !string.IsNullOrWhiteSpace(macObjetivoNormalizada);
+
+        bool usoMacDelHistorial = false;
+
+        if (!usoMacIndicada &&
+            !string.IsNullOrWhiteSpace(direccionIPObjetivo))
+        {
+            RegistroDispositivo registroHistorico =
+                historial
+                    .Where(registro =>
+                        string.Equals(
+                            registro.NombreInterfaz,
+                            nombreInterfaz,
+                            StringComparison.OrdinalIgnoreCase) &&
+                        string.Equals(
+                            registro.DireccionIP,
+                            direccionIPObjetivo.Trim(),
+                            StringComparison.OrdinalIgnoreCase) &&
+                        !string.IsNullOrWhiteSpace(
+                            registro.DireccionMac))
+                    .OrderByDescending(
+                        registro => registro.FechaDeteccion)
+                    .FirstOrDefault();
+
+            string macHistorial =
+                NormalizarMac(
+                    registroHistorico?.DireccionMac);
+
+            if (!string.IsNullOrWhiteSpace(macHistorial))
+            {
+                macObjetivoNormalizada =
+                    macHistorial;
+
+                usoMacDelHistorial = true;
+            }
+        }
+
+        bool busquedaPorIp =
+            !string.IsNullOrWhiteSpace(direccionIPObjetivo) &&
+            !usoMacDelHistorial;
+
+        bool busquedaPorMac =
+            !string.IsNullOrWhiteSpace(macObjetivoNormalizada);
+
+        UltimoUsoHistorial =
+            usoMacDelHistorial;
+
+        UltimoCriterioBusqueda =
+            usoMacDelHistorial
+                ? "Historial → MAC"
+                : usoMacIndicada
+                    ? "MAC"
+                    : busquedaPorIp
+                        ? "IP"
+                        : "Automática";
 
         HashSet<string> ipsHistoricas =
             historial
@@ -258,6 +333,15 @@ public class CapturadorPaquetesService
                 UltimoFabricanteDeteccion =
                     fabricante;
             }
+        }
+
+        bool MacCoincideObjetivo(string direccionMac)
+        {
+            return busquedaPorMac &&
+                   string.Equals(
+                       NormalizarMac(direccionMac),
+                       macObjetivoNormalizada,
+                       StringComparison.OrdinalIgnoreCase);
         }
 
         bool EsNuestraMac(PhysicalAddress direccionMac)
@@ -472,7 +556,9 @@ public class CapturadorPaquetesService
                 out string nombreCdp,
                 out string direccionGestionCdp);
 
-            if (!string.IsNullOrWhiteSpace(macCdp))
+            if (!string.IsNullOrWhiteSpace(macCdp) &&
+                (!busquedaPorMac ||
+                 MacCoincideObjetivo(macCdp)))
             {
                 vecinoDirectoDetectado = true;
                 macVecinoDirecto = macCdp;
@@ -537,6 +623,30 @@ public class CapturadorPaquetesService
             string macFuenteArp =
                 FormatearMac(
                     arp.SenderHardwareAddress);
+
+            if (busquedaPorMac &&
+                !MacCoincideObjetivo(macFuenteArp))
+            {
+                return;
+            }
+
+            if (busquedaPorMac &&
+                !EsDireccionEspecial(
+                    arp.SenderProtocolAddress))
+            {
+                resultado.DireccionIP =
+                    arp.SenderProtocolAddress.ToString();
+
+                resultado.DireccionMac =
+                    macFuenteArp;
+
+                RegistrarOrigen(
+                    usoMacDelHistorial
+                        ? "ARP por MAC (historial)"
+                        : "ARP por MAC");
+
+                return;
+            }
 
             // Una solicitud ARP del vecino también puede revelar
             // directamente su IPv4 de origen. Es especialmente útil
@@ -701,10 +811,10 @@ public class CapturadorPaquetesService
                     "El dispositivo de captura seleccionado no permite inyección de paquetes.");
             }
 
-            bool busquedaManual =
+            bool busquedaPorIp =
                 !string.IsNullOrWhiteSpace(direccionIPObjetivo);
 
-            if (!busquedaManual)
+            if (!busquedaPorIp)
             {
                 UltimaFaseDeteccion =
                     "Escuchando LLDP/CDP/EDP/FDP/NDP/HPSW/STP";
@@ -729,7 +839,7 @@ public class CapturadorPaquetesService
             }
 
             UltimaFaseDeteccion =
-                busquedaManual
+                busquedaPorIp
                     ? "Preparando ARP dirigido"
                     : "Preparando sondeo ARP";
 
@@ -742,7 +852,7 @@ public class CapturadorPaquetesService
             List<IPAddress> objetivosArpRespaldo =
                 new List<IPAddress>();
 
-            if (busquedaManual)
+            if (busquedaPorIp)
             {
                 objetivosArpLocales.Add(
                     IPAddress.Parse(
@@ -761,7 +871,8 @@ public class CapturadorPaquetesService
                     ObtenerObjetivosLinkLocal(
                         direccionIpLocal);
 
-                if (vecinoDirectoDetectado)
+                if (vecinoDirectoDetectado ||
+                    busquedaPorMac)
                 {
                     objetivosArpRespaldo =
                         ObtenerObjetivosRespaldo(
@@ -793,7 +904,7 @@ public class CapturadorPaquetesService
             UltimaCantidadSondasArp = 0;
 
             UltimaEstimacionDeteccionMs =
-                busquedaManual
+                busquedaPorIp
                     ? 1400
                     : 6000 +
                       (OperatingSystem.IsWindows()
@@ -819,25 +930,22 @@ public class CapturadorPaquetesService
             // Si solo tenemos ARP, no existe confirmación física del
             // vecino. Las respuestas se consolidan y se puntúan para
             // escoger el candidato con mayor evidencia disponible.
-            if (!vecinoDirectoDetectado ||
-                string.IsNullOrWhiteSpace(resultado.DireccionIP))
+            if ((busquedaPorMac || 
+                 !vecinoDirectoDetectado ||
+                 string.IsNullOrWhiteSpace(resultado.DireccionIP)) &&
+                !busquedaPorIp)
             {
                 Console.WriteLine(
-                    busquedaManual
+                    busquedaPorIp
                         ? $"Detección dirigida iniciada para {direccionIPObjetivo}."
                         : $"Sin confirmación LLDP/CDP/EDP/FDP/STP: recurriendo a ARP. Sondas: {objetivosArpActivos.Count}.");
 
-                if (busquedaManual)
+                if (false)
                 {
-                    IPAddress objetivo =
-                        IPAddress.Parse(
-                            direccionIPObjetivo);
-
-                    for (int intento = 1;
-                         intento <= 3 &&
-                         string.IsNullOrWhiteSpace(
-                             resultado.DireccionIP);
-                         intento++)
+                    // La búsqueda por IP se ejecuta en un bloque dedicado
+                    // antes del sondeo automático.
+                }
+                else
                     {
                         EnviarConsultaArp(
                             dispositivoInyeccion,
@@ -926,12 +1034,13 @@ public class CapturadorPaquetesService
             UltimaFaseDeteccion =
                 "Consolidando respuestas";
 
-            if (!busquedaManual)
+            if (!busquedaPorIp)
             {
                 await Task.Delay(500);
 
                 if (string.IsNullOrWhiteSpace(
-                        resultado.DireccionIP))
+                        resultado.DireccionIP) &&
+                    !busquedaPorMac)
                 {
                     ResolverResultadoArpAutomatico(
                         resultado,
@@ -944,6 +1053,44 @@ public class CapturadorPaquetesService
                 }
             }
         }
+        if (usoMacDelHistorial &&
+            string.IsNullOrWhiteSpace(resultado.DireccionIP) &&
+            !string.IsNullOrWhiteSpace(direccionIPObjetivo))
+        {
+            UltimaFaseDeteccion =
+                "ARP dirigido por IP del historial";
+
+            IPAddress objetivoHistorial =
+                IPAddress.Parse(
+                    direccionIPObjetivo);
+
+            for (int intento = 1;
+                 intento <= 3 &&
+                 string.IsNullOrWhiteSpace(
+                     resultado.DireccionIP);
+                 intento++)
+            {
+                EnviarConsultaArp(
+                    dispositivoInyeccion,
+                    direccionMacLocal,
+                    direccionMacBroadcast,
+                    direccionMacVacia,
+                    objetivoHistorial,
+                    direccionOrigenArp);
+
+                Interlocked.Increment(
+                    ref _sondasArpActuales);
+
+                await Task.Delay(100);
+            }
+
+            if (!string.IsNullOrWhiteSpace(resultado.DireccionIP))
+            {
+                UltimoCriterioBusqueda =
+                    "Historial → IP fallback";
+            }
+        }
+
         finally
         {
             dispositivoSeleccionado.StopCapture();
@@ -3150,6 +3297,39 @@ public class CapturadorPaquetesService
         {
             await Task.Delay(25);
         }
+    }
+
+    private string NormalizarMac(string direccionMac)
+    {
+        if (string.IsNullOrWhiteSpace(direccionMac))
+        {
+            return string.Empty;
+        }
+
+        string limpio =
+            new string(
+                direccionMac
+                    .Where(char.IsLetterOrDigit)
+                    .ToArray())
+            .ToUpperInvariant();
+
+        if (limpio.Length != 12 ||
+            limpio.Any(caracter =>
+                !(
+                    (caracter >= '0' && caracter <= '9') ||
+                    (caracter >= 'A' && caracter <= 'F')
+                )))
+        {
+            return string.Empty;
+        }
+
+        return
+            $"{limpio[0]}{limpio[1]}:" +
+            $"{limpio[2]}{limpio[3]}:" +
+            $"{limpio[4]}{limpio[5]}:" +
+            $"{limpio[6]}{limpio[7]}:" +
+            $"{limpio[8]}{limpio[9]}:" +
+            $"{limpio[10]}{limpio[11]}";
     }
 
     private string FormatearMac(PhysicalAddress direccionMac)
