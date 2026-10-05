@@ -212,7 +212,7 @@ public class CapturadorPaquetesService
         bool usoMacDelHistorial = false;
 
         if (!usoMacIndicada &&
-            !string.IsNullOrWhiteSpace(direccionIPObjetivo))
+            !!busquedaPorIp)
         {
             RegistroDispositivo registroHistorico =
                 historial
@@ -351,6 +351,31 @@ public class CapturadorPaquetesService
                    direccionMac.Equals(direccionMacLocal);
         }
 
+        bool MacCoincideObjetivo(string direccionMac)
+        {
+            return busquedaPorMac &&
+                   string.Equals(
+                       NormalizarMac(direccionMac),
+                       macObjetivoNormalizada,
+                       StringComparison.OrdinalIgnoreCase);
+        }
+
+        void RegistrarCoincidenciaMac()
+        {
+            if (!busquedaPorMac)
+            {
+                return;
+            }
+
+            UltimaConfianzaDeteccion =
+                usoMacDelHistorial
+                    ? "Confirmado por MAC del historial"
+                    : "Confirmado por MAC objetivo";
+
+            UltimaRazonDeteccion =
+                "La MAC observada coincide exactamente con la MAC buscada.";
+        }
+
         bool EsNuestraIp(IPAddress direccionIp)
         {
             return direccionIpLocal != null &&
@@ -375,7 +400,8 @@ public class CapturadorPaquetesService
                     capturaBruta.Data,
                     out string macLldpDirecta,
                     out string nombreLldpDirecto,
-                    out string direccionGestionLldp))
+                    out string direccionGestionLldp) &&
+                (!busquedaPorMac || MacCoincideObjetivo(macLldpDirecta)))
             {
                 vecinoDirectoDetectado = true;
                 macVecinoDirecto = macLldpDirecta;
@@ -387,6 +413,7 @@ public class CapturadorPaquetesService
                     nombreLldpDirecto ?? string.Empty;
 
                 RegistrarOrigen("LLDP");
+                RegistrarCoincidenciaMac();
                 RegistrarFabricante(
                     _fabricanteMacService.ObtenerFabricante(
                         macLldpDirecta));
@@ -395,7 +422,7 @@ public class CapturadorPaquetesService
                 // sigue siendo la dirección objetivo. Si LLDP solo aporta
                 // MAC/nombre, continuamos para completar la IP mediante ARP.
                 if (!string.IsNullOrWhiteSpace(direccionGestionLldp) &&
-                    string.IsNullOrWhiteSpace(direccionIPObjetivo))
+                    !busquedaPorIp)
                 {
                     resultado.DireccionIP =
                         direccionGestionLldp;
@@ -412,7 +439,8 @@ public class CapturadorPaquetesService
                     capturaBruta.Data,
                     out string macHpsw,
                     out string nombreHpsw,
-                    out string direccionGestionHpsw))
+                    out string direccionGestionHpsw) &&
+                (!busquedaPorMac || MacCoincideObjetivo(macHpsw)))
             {
                 vecinoDirectoDetectado = true;
                 macVecinoDirecto = macHpsw;
@@ -424,12 +452,13 @@ public class CapturadorPaquetesService
                     nombreHpsw ?? string.Empty;
 
                 RegistrarOrigen("HPSW");
+                RegistrarCoincidenciaMac();
                 RegistrarFabricante(
                     _fabricanteMacService.ObtenerFabricante(
                         macHpsw));
 
                 if (!string.IsNullOrWhiteSpace(direccionGestionHpsw) &&
-                    string.IsNullOrWhiteSpace(direccionIPObjetivo))
+                    !busquedaPorIp)
                 {
                     resultado.DireccionIP =
                         direccionGestionHpsw;
@@ -448,7 +477,8 @@ public class CapturadorPaquetesService
             // convertir el descubrimiento en un escaneo diferente.
             if (IntentarExtraerInformacionNdp(
                     capturaBruta.Data,
-                    out string macNdp))
+                    out string macNdp) &&
+                (!busquedaPorMac || MacCoincideObjetivo(macNdp)))
             {
                 vecinoDirectoDetectado = true;
                 macVecinoDirecto = macNdp;
@@ -457,6 +487,7 @@ public class CapturadorPaquetesService
                     macNdp;
 
                 RegistrarOrigen("NDP/HGMPv2");
+                RegistrarCoincidenciaMac();
                 RegistrarFabricante(
                     _fabricanteMacService.ObtenerFabricante(
                         macNdp));
@@ -470,7 +501,8 @@ public class CapturadorPaquetesService
                     capturaBruta.Data,
                     out string macEdp,
                     out string nombreEdp,
-                    out string direccionGestionEdp))
+                    out string direccionGestionEdp) &&
+                (!busquedaPorMac || MacCoincideObjetivo(macEdp)))
             {
                 vecinoDirectoDetectado = true;
                 macVecinoDirecto = macEdp;
@@ -482,13 +514,14 @@ public class CapturadorPaquetesService
                     nombreEdp ?? string.Empty;
 
                 RegistrarOrigen("EDP");
+                RegistrarCoincidenciaMac();
                 RegistrarFabricante(
                     _fabricanteMacService.ObtenerFabricante(
                         macEdp));
                 RegistrarFabricante("Extreme Networks");
 
                 if (!string.IsNullOrWhiteSpace(direccionGestionEdp) &&
-                    string.IsNullOrWhiteSpace(direccionIPObjetivo))
+                    !busquedaPorIp)
                 {
                     resultado.DireccionIP =
                         direccionGestionEdp;
@@ -501,7 +534,8 @@ public class CapturadorPaquetesService
                     capturaBruta.Data,
                     out string macFdp,
                     out string nombreFdp,
-                    out string direccionGestionFdp))
+                    out string direccionGestionFdp) &&
+                (!busquedaPorMac || MacCoincideObjetivo(macFdp)))
             {
                 vecinoDirectoDetectado = true;
                 macVecinoDirecto = macFdp;
@@ -513,12 +547,13 @@ public class CapturadorPaquetesService
                     nombreFdp ?? string.Empty;
 
                 RegistrarOrigen("FDP");
+                RegistrarCoincidenciaMac();
                 RegistrarFabricante(
                     _fabricanteMacService.ObtenerFabricante(
                         macFdp));
 
                 if (!string.IsNullOrWhiteSpace(direccionGestionFdp) &&
-                    string.IsNullOrWhiteSpace(direccionIPObjetivo))
+                    !busquedaPorIp)
                 {
                     resultado.DireccionIP =
                         direccionGestionFdp;
@@ -532,7 +567,8 @@ public class CapturadorPaquetesService
             // como tráfico IP por otros switches.
             if (IntentarExtraerInformacionStp(
                     capturaBruta.Data,
-                    out string macStp))
+                    out string macStp) &&
+                (!busquedaPorMac || MacCoincideObjetivo(macStp)))
             {
                 vecinoDirectoDetectado = true;
                 macVecinoDirecto = macStp;
@@ -541,6 +577,7 @@ public class CapturadorPaquetesService
                     macStp;
 
                 RegistrarOrigen("STP");
+                RegistrarCoincidenciaMac();
                 RegistrarFabricante(
                     _fabricanteMacService.ObtenerFabricante(
                         macStp));
@@ -573,13 +610,14 @@ public class CapturadorPaquetesService
                 }
 
                 RegistrarOrigen("CDP");
+                RegistrarCoincidenciaMac();
                 RegistrarFabricante(
                     _fabricanteMacService.ObtenerFabricante(
                         macCdp));
                 RegistrarFabricante("Cisco Systems");
 
                 if (!string.IsNullOrWhiteSpace(direccionGestionCdp) &&
-                    string.IsNullOrWhiteSpace(direccionIPObjetivo))
+                    !busquedaPorIp)
                 {
                     resultado.DireccionIP =
                         direccionGestionCdp;
@@ -811,9 +849,6 @@ public class CapturadorPaquetesService
                     "El dispositivo de captura seleccionado no permite inyección de paquetes.");
             }
 
-            bool busquedaPorIp =
-                !string.IsNullOrWhiteSpace(direccionIPObjetivo);
-
             if (!busquedaPorIp)
             {
                 UltimaFaseDeteccion =
@@ -940,83 +975,99 @@ public class CapturadorPaquetesService
                         ? $"Detección dirigida iniciada para {direccionIPObjetivo}."
                         : $"Sin confirmación LLDP/CDP/EDP/FDP/STP: recurriendo a ARP. Sondas: {objetivosArpActivos.Count}.");
 
-                if (false)
+                if (busquedaPorIp)
+            {
+                Console.WriteLine(
+                    $"Detección dirigida iniciada para {direccionIPObjetivo}.");
+
+                IPAddress objetivo =
+                    IPAddress.Parse(
+                        direccionIPObjetivo);
+
+                UltimaFaseDeteccion =
+                    "ARP dirigido";
+
+                for (int intento = 1;
+                     intento <= 3 &&
+                     string.IsNullOrWhiteSpace(
+                         resultado.DireccionIP);
+                     intento++)
                 {
-                    // La búsqueda por IP se ejecuta en un bloque dedicado
-                    // antes del sondeo automático.
+                    EnviarConsultaArp(
+                        dispositivoInyeccion,
+                        direccionMacLocal,
+                        direccionMacBroadcast,
+                        direccionMacVacia,
+                        objetivo,
+                        direccionOrigenArp);
+
+                    Interlocked.Increment(
+                        ref _sondasArpActuales);
+
+                    await Task.Delay(100);
                 }
-                else
-                    {
-                        EnviarConsultaArp(
-                            dispositivoInyeccion,
-                            direccionMacLocal,
-                            direccionMacBroadcast,
-                            direccionMacVacia,
-                            objetivo,
-                            direccionOrigenArp);
+            }
+            else if (!vecinoDirectoDetectado ||
+                     string.IsNullOrWhiteSpace(
+                         resultado.DireccionIP))
+            {
+                Console.WriteLine(
+                    busquedaPorMac
+                        ? $"Búsqueda por MAC iniciada para {macObjetivoNormalizada}. Sondas: {objetivosArpActivos.Count}."
+                        : $"Sin confirmación LLDP/CDP/EDP/FDP/STP: recurriendo a ARP. Sondas: {objetivosArpActivos.Count}.");
 
-                        Interlocked.Increment(
-                            ref _sondasArpActuales);
+                UltimaFaseDeteccion =
+                    busquedaPorMac
+                        ? "Búsqueda por MAC mediante ARP"
+                        : "Sondeo ARP paralelo: red local + 169.254/16";
 
-                        Console.WriteLine(
-                            $"Consulta ARP dirigida {intento}/3 enviada para: {objetivo}");
+                SemaphoreSlim semaforoEnvioArp =
+                    new SemaphoreSlim(1, 1);
 
-                        await Task.Delay(100);
-                    }
-                }
-                else
-                {
-                    UltimaFaseDeteccion =
-                        "Sondeo ARP paralelo: red local + 169.254/16";
+                Task tareaRedLocal =
+                    SondearArpAsync(
+                        dispositivoInyeccion,
+                        objetivosArpLocales,
+                        direccionIpLocal,
+                        direccionMacLocal,
+                        direccionMacBroadcast,
+                        direccionMacVacia,
+                        direccionOrigenArp,
+                        2,
+                        semaforoEnvioArp);
 
-                    SemaphoreSlim semaforoEnvioArp =
-                        new SemaphoreSlim(1, 1);
+                Task tareaLinkLocal =
+                    SondearArpLinkLocalAdaptativoAsync(
+                        dispositivoInyeccion,
+                        objetivosArpLinkLocal,
+                        direccionIpLocal,
+                        direccionMacLocal,
+                        direccionMacBroadcast,
+                        direccionMacVacia,
+                        direccionOrigenArp,
+                        semaforoEnvioArp,
+                        respuestasArp);
 
-                    Task tareaRedLocal =
-                        SondearArpAsync(
-                            dispositivoInyeccion,
-                            objetivosArpLocales,
-                            direccionIpLocal,
-                            direccionMacLocal,
-                            direccionMacBroadcast,
-                            direccionMacVacia,
-                            direccionOrigenArp,
-                            2,
-                            semaforoEnvioArp);
+                Task tareaRespaldo =
+                    SondearArpAsync(
+                        dispositivoInyeccion,
+                        objetivosArpRespaldo,
+                        direccionIpLocal,
+                        direccionMacLocal,
+                        direccionMacBroadcast,
+                        direccionMacVacia,
+                        direccionOrigenArp,
+                        objetivosArpLinkLocal.Count > 0
+                            ? 2
+                            : 1,
+                        semaforoEnvioArp);
 
-                    Task tareaLinkLocal =
-                        SondearArpLinkLocalAdaptativoAsync(
-                            dispositivoInyeccion,
-                            objetivosArpLinkLocal,
-                            direccionIpLocal,
-                            direccionMacLocal,
-                            direccionMacBroadcast,
-                            direccionMacVacia,
-                            direccionOrigenArp,
-                            semaforoEnvioArp,
-                            respuestasArp);
+                await Task.WhenAll(
+                    tareaRedLocal,
+                    tareaLinkLocal,
+                    tareaRespaldo);
 
-                    Task tareaRespaldo =
-                        SondearArpAsync(
-                            dispositivoInyeccion,
-                            objetivosArpRespaldo,
-                            direccionIpLocal,
-                            direccionMacLocal,
-                            direccionMacBroadcast,
-                            direccionMacVacia,
-                            direccionOrigenArp,
-                            objetivosArpLinkLocal.Count > 0
-                                ? 2
-                                : 1,
-                            semaforoEnvioArp);
-
-                    await Task.WhenAll(
-                        tareaRedLocal,
-                        tareaLinkLocal,
-                        tareaRespaldo);
-
-                    semaforoEnvioArp.Dispose();
-                }
+                semaforoEnvioArp.Dispose();
             }
             else
             {
@@ -1052,13 +1103,15 @@ public class CapturadorPaquetesService
                         macsHistoricas);
                 }
             }
-        }
+        
         if (usoMacDelHistorial &&
             string.IsNullOrWhiteSpace(resultado.DireccionIP) &&
             !string.IsNullOrWhiteSpace(direccionIPObjetivo))
         {
             UltimaFaseDeteccion =
                 "ARP dirigido por IP del historial";
+
+            busquedaPorMac = false;
 
             IPAddress objetivoHistorial =
                 IPAddress.Parse(
@@ -1084,7 +1137,10 @@ public class CapturadorPaquetesService
                 await Task.Delay(100);
             }
 
-            if (!string.IsNullOrWhiteSpace(resultado.DireccionIP))
+            busquedaPorMac = true;
+
+            if (!string.IsNullOrWhiteSpace(
+                    resultado.DireccionIP))
             {
                 UltimoCriterioBusqueda =
                     "Historial → IP fallback";
