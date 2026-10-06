@@ -1121,10 +1121,21 @@ public class CapturadorPaquetesService
                 }
             }
 
+            bool requiereSondeoArp =
+                busquedaPorIp ||
+                (string.IsNullOrWhiteSpace(
+                     resultado.DireccionIP) &&
+                 (busquedaPorMac ||
+                  !lldpDetectado));
+
             UltimaFaseDeteccion =
-                busquedaPorIp
-                    ? "Preparando ARP dirigido"
-                    : "Preparando sondeo ARP";
+                requiereSondeoArp
+                    ? busquedaPorIp
+                        ? "Preparando ARP dirigido"
+                        : "Preparando sondeo ARP"
+                    : lldpDetectado
+                        ? "LLDP confirmado; no se requiere ARP"
+                        : "IPv4 obtenida por protocolo L2";
 
             List<IPAddress> objetivosArpLocales =
                 new List<IPAddress>();
@@ -1135,31 +1146,34 @@ public class CapturadorPaquetesService
             List<IPAddress> objetivosArpRespaldo =
                 new List<IPAddress>();
 
-            if (busquedaPorIp)
+            if (requiereSondeoArp)
             {
-                objetivosArpLocales.Add(
-                    IPAddress.Parse(
-                        direccionIPObjetivo));
-            }
-            else
-            {
-                objetivosArpLocales =
-                    ObtenerObjetivosRedLocal(
-                        direccionIpLocal,
-                        mascaraRedLocal,
-                        puertaEnlace,
-                        ipsHistoricas);
-
-                objetivosArpLinkLocal =
-                    ObtenerObjetivosLinkLocal(
-                        direccionIpLocal);
-
-                if (vecinoDirectoDetectado ||
-                    busquedaPorMac)
+                if (busquedaPorIp)
                 {
-                    objetivosArpRespaldo =
-                        ObtenerObjetivosRespaldo(
+                    objetivosArpLocales.Add(
+                        IPAddress.Parse(
+                            direccionIPObjetivo));
+                }
+                else
+                {
+                    objetivosArpLocales =
+                        ObtenerObjetivosRedLocal(
+                            direccionIpLocal,
+                            mascaraRedLocal,
+                            puertaEnlace,
+                            ipsHistoricas);
+
+                    objetivosArpLinkLocal =
+                        ObtenerObjetivosLinkLocal(
                             direccionIpLocal);
+
+                    if (vecinoDirectoDetectado ||
+                        busquedaPorMac)
+                    {
+                        objetivosArpRespaldo =
+                            ObtenerObjetivosRespaldo(
+                                direccionIpLocal);
+                    }
                 }
             }
 
@@ -1187,18 +1201,20 @@ public class CapturadorPaquetesService
             UltimaCantidadSondasArp = 0;
 
             UltimaEstimacionDeteccionMs =
-                busquedaPorIp
-                    ? 1400
-                    : 6000 +
-                      (OperatingSystem.IsWindows()
-                          ? EstimarDuracionArpOptimizadoMs(
-                                objetivosArpLocales.Count,
-                                objetivosArpLinkLocal.Count,
-                                objetivosArpRespaldo.Count)
-                          : EstimarDuracionArpMs(
-                                objetivosArpLocales.Count,
-                                objetivosArpLinkLocal.Count,
-                                objetivosArpRespaldo.Count));
+                !requiereSondeoArp
+                    ? 0
+                    : busquedaPorIp
+                        ? 1400
+                        : 6000 +
+                          (OperatingSystem.IsWindows()
+                              ? EstimarDuracionArpOptimizadoMs(
+                                    objetivosArpLocales.Count,
+                                    objetivosArpLinkLocal.Count,
+                                    objetivosArpRespaldo.Count)
+                              : EstimarDuracionArpMs(
+                                    objetivosArpLocales.Count,
+                                    objetivosArpLinkLocal.Count,
+                                    objetivosArpRespaldo.Count));
 
             // Si la detección automática recibió un LLDP válido, el
             // descubrimiento termina en capa 2 aunque el anuncio no
