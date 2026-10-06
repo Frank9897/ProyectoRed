@@ -2273,53 +2273,33 @@ public class CapturadorPaquetesService
             int longitudValor =
                 longitudTlv - 4;
 
-            // 0x0001 = Device-ID. Cisco permite que este identificador
-            // sea MAC del chasis, número de serie o nombre del sistema.
-            // Cuando el Device-ID tiene formato MAC binario, lo conservamos
-            // como identidad adicional para la búsqueda por MAC.
+            // 0x0001 = Device-ID. Cisco puede anunciar como
+            // identificador una MAC, un número de serie o un hostname.
+            // Se interpreta como texto y solo se considera MAC cuando
+            // el valor textual tiene formato de dirección MAC.
             if (tipoTlv == 0x0001 &&
                 longitudValor > 0)
             {
-                if (longitudValor == 6)
+                string deviceIdTexto =
+                    System.Text.Encoding.ASCII.GetString(
+                        datos,
+                        inicioValor,
+                        longitudValor)
+                    .TrimEnd('\0', ' ');
+
+                string macDesdeDeviceId =
+                    NormalizarMac(deviceIdTexto);
+
+                if (!string.IsNullOrWhiteSpace(
+                        macDesdeDeviceId))
                 {
-                    byte[] macBytes =
-                        datos.AsSpan(
-                                inicioValor,
-                                6)
-                            .ToArray();
-
-                    bool macUnicast =
-                        (macBytes[0] & 0x01) == 0;
-
-                    bool macNoNula =
-                        macBytes.Any(
-                            byteMac =>
-                                byteMac != 0x00);
-
-                    bool macNoBroadcast =
-                        macBytes.Any(
-                            byteMac =>
-                                byteMac != 0xFF);
-
-                    if (macUnicast &&
-                        macNoNula &&
-                        macNoBroadcast)
-                    {
-                        macIdentidad =
-                            FormatearMac(
-                                new PhysicalAddress(
-                                    macBytes));
-                    }
+                    macIdentidad =
+                        macDesdeDeviceId;
                 }
-
-                if (macIdentidad == null)
+                else
                 {
                     nombreDispositivo =
-                        System.Text.Encoding.ASCII.GetString(
-                            datos,
-                            inicioValor,
-                            longitudValor)
-                        .TrimEnd('\0');
+                        deviceIdTexto;
                 }
             }
 
