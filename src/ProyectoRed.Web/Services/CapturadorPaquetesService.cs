@@ -458,16 +458,25 @@ public class CapturadorPaquetesService
             if (IntentarExtraerInformacionLldp(
                     capturaBruta.Data,
                     out string macLldpDirecta,
+                    out string macLldpChasis,
                     out string nombreLldpDirecto,
                     out string direccionGestionLldp) &&
-                (!busquedaPorMac || MacCoincideObjetivo(macLldpDirecta)))
+                (!busquedaPorMac ||
+                 MacCoincideObjetivo(macLldpDirecta) ||
+                 MacCoincideObjetivo(macLldpChasis)))
             {
+                string macLldpSeleccionada =
+                    busquedaPorMac &&
+                    MacCoincideObjetivo(macLldpChasis)
+                        ? macLldpChasis
+                        : macLldpDirecta;
+
                 vecinoDirectoDetectado = true;
                 lldpDetectado = true;
-                macVecinoDirecto = macLldpDirecta;
+                macVecinoDirecto = macLldpSeleccionada;
 
                 resultado.DireccionMac =
-                    macLldpDirecta;
+                    macLldpSeleccionada;
 
                 resultado.Nombre =
                     nombreLldpDirecto ?? string.Empty;
@@ -476,7 +485,7 @@ public class CapturadorPaquetesService
                 RegistrarCoincidenciaMac();
                 RegistrarFabricante(
                     _fabricanteMacService.ObtenerFabricante(
-                        macLldpDirecta));
+                        macLldpSeleccionada));
 
                 // En detección manual la IP introducida por el técnico
                 // sigue siendo la dirección objetivo. Si LLDP solo aporta
@@ -1265,10 +1274,12 @@ public class CapturadorPaquetesService
     private bool IntentarExtraerInformacionLldp(
         byte[] datos,
         out string macOrigen,
+        out string macChasis,
         out string nombreSistema,
         out string direccionGestion)
     {
         macOrigen = null;
+        macChasis = null;
         nombreSistema = null;
         direccionGestion = null;
 
@@ -1332,6 +1343,23 @@ public class CapturadorPaquetesService
             if (posicion + longitud > datos.Length)
             {
                 return true;
+            }
+
+            // Tipo 1 = Chassis ID. Subtipo 4 identifica una
+            // dirección MAC del sistema/chasis. La conservamos además
+            // de la MAC Ethernet de origen porque en algunos equipos
+            // pueden no ser exactamente la misma.
+            if (tipo == 1 &&
+                longitud >= 7 &&
+                datos[posicion] == 4)
+            {
+                macChasis =
+                    FormatearMac(
+                        new PhysicalAddress(
+                            datos.AsSpan(
+                                    posicion + 1,
+                                    6)
+                                .ToArray()));
             }
 
             // Tipo 5 = System Name.
