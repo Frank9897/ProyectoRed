@@ -167,6 +167,7 @@ La lógica de descubrimiento mantiene intacta la estrategia de fiabilidad y solo
 - En STP/RSTP/MSTP, la búsqueda por MAC puede comparar la MAC Ethernet de origen y la MAC contenida en el Bridge Identifier de la BPDU. STP no aporta por sí mismo una IPv4 de administración, por lo que continúa con ARP cuando sea necesario.
 - EDP ya utiliza el Switch ID/MAC del encabezado EDP; HPSW prioriza el Own MAC Address publicado por su TLV; FDP y NDP conservan la MAC de origen como identidad del vecino en la implementación actual.
 - Cuando llegan anuncios de varios protocolos L2 durante la misma captura, ProyectoRed conserva la identidad del protocolo con mayor prioridad en lugar de reemplazarla con una señal más débil. La prioridad actual es LLDP, luego CDP/EDP, FDP/HPSW, NDP/HGMPv2 y finalmente STP. Esto evita que un BPDU posterior desplace una identidad LLDP ya establecida.
+- La IPv4 aportada directamente por un protocolo L2 se conserva como candidato junto con su protocolo de origen. Al terminar la fase de escucha se elige la dirección de mayor prioridad, en lugar de aceptar simplemente la primera trama que llegó. Cuando la IPv4 ya fue resuelta por L2, no se construyen ni envían objetivos ARP innecesarios; cuando LLDP está presente en automático sin IP, se mantiene la regla de finalizar sin ARP.
 
 ## Tecnologías
 
