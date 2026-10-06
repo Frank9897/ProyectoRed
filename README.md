@@ -163,6 +163,9 @@ La lógica de descubrimiento mantiene intacta la estrategia de fiabilidad y solo
 - Cuando un protocolo L2 ya confirmó al vecino directo por su MAC, las respuestas ARP de esa misma MAC se conservan aunque su IPv4 quede fuera de los rangos activos del sondeo. Si aparecen varias IPv4, se selecciona la candidata con mayor evidencia.
 - Si el protocolo L2 anuncia una MAC diferente de la utilizada por el equipo en ARP, las respuestas ARP no se descartan. Cuando existe coincidencia de MAC se prioriza; cuando no existe, la selección vuelve a todas las candidatas ARP para evitar perder la IPv4 del vecino.
 - En LLDP, el modo MAC puede comparar la MAC Ethernet de origen y el Chassis ID cuando este usa subtipo MAC. En automático, un LLDP válido mantiene prioridad y evita iniciar el sondeo ARP, aunque el anuncio no incluya Management Address.
+- En CDP, la MAC Ethernet de origen y un Device-ID binario de seis bytes pueden actuar como identidades para la búsqueda por MAC. El Device-ID de CDP no siempre es una MAC: también puede ser nombre de sistema o número de serie.
+- En STP/RSTP/MSTP, la búsqueda por MAC puede comparar la MAC Ethernet de origen y la MAC contenida en el Bridge Identifier de la BPDU. STP no aporta por sí mismo una IPv4 de administración, por lo que continúa con ARP cuando sea necesario.
+- EDP ya utiliza el Switch ID/MAC del encabezado EDP; HPSW prioriza el Own MAC Address publicado por su TLV; FDP y NDP conservan la MAC de origen como identidad del vecino en la implementación actual.
 
 ## Tecnologías
 
