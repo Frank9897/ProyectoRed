@@ -1902,7 +1902,7 @@ public class CapturadorPaquetesService
         if (longitud == 0x8100 ||
             longitud == 0x88A8)
         {
-            if (datos.Length < 38)
+            if (datos.Length < 30)
             {
                 return false;
             }
