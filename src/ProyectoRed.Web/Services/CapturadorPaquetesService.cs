@@ -2859,6 +2859,13 @@ public class CapturadorPaquetesService
                 " Otros candidatos quedaron muy cerca.";
         }
 
+        if (vecinoDirectoDetectado &&
+            !huboCoincidenciaMacVecino)
+        {
+            UltimaRazonDeteccion +=
+                " La MAC observada por el protocolo L2 no coincidió con la MAC de la respuesta ARP seleccionada.";
+        }
+
         if (ipsHistoricas.Contains(
                 ConvertirAIPv4(mejor.ip).ToString()))
         {
