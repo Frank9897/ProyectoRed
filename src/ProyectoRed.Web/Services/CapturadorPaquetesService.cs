@@ -473,7 +473,10 @@ public class CapturadorPaquetesService
                     !string.IsNullOrWhiteSpace(
                         registro.DireccionMac))
                 .Select(registro =>
-                    registro.DireccionMac)
+                    NormalizarMacCacheada(
+                        registro.DireccionMac))
+                .Where(mac =>
+                    !string.IsNullOrWhiteSpace(mac))
                 .ToHashSet(
                     StringComparer.OrdinalIgnoreCase);
 
@@ -2686,6 +2689,17 @@ public class CapturadorPaquetesService
         List<(uint ip, string mac, int respuestas, string fabricante, int puntaje)> candidatos =
             new List<(uint ip, string mac, int respuestas, string fabricante, int puntaje)>();
 
+        bool hayCoincidenciaMacVecino =
+            vecinoDirectoDetectado &&
+            respuestasArp.Values
+                .SelectMany(macs =>
+                    macs.Keys)
+                .Any(mac =>
+                    string.Equals(
+                        mac,
+                        macVecinoDirecto,
+                        StringComparison.OrdinalIgnoreCase));
+
         foreach (KeyValuePair<uint, Dictionary<string, int>> respuesta
                  in respuestasArp)
         {
@@ -2708,6 +2722,13 @@ public class CapturadorPaquetesService
                     macsHistoricas.Contains(
                         mac.Key);
 
+                bool macL2Coincide =
+                    hayCoincidenciaMacVecino &&
+                    string.Equals(
+                        mac.Key,
+                        macVecinoDirecto,
+                        StringComparison.OrdinalIgnoreCase);
+
                 int puntaje =
                     CalcularPuntajeArp(
                         ip,
@@ -2715,7 +2736,7 @@ public class CapturadorPaquetesService
                         mac.Value,
                         puertaEnlace,
                         fabricante,
-                        vecinoDirectoDetectado,
+                        macL2Coincide,
                         ipHistorica,
                         macHistorica);
 
@@ -2801,11 +2822,12 @@ public class CapturadorPaquetesService
                 "Confirmado por vecino directo";
         }
         else if (vecinoDirectoDetectado &&
+                 !huboCoincidenciaMacVecino &&
                  diferencia >= 12 &&
                  mejor.puntaje >= 55)
         {
             UltimaConfianzaDeteccion =
-                "Vecino L2 confirmado; IP probable por ARP";
+                "Vecino L2 detectado; IP probable por ARP sin coincidencia de MAC";
         }
         else if (diferencia >= 12 &&
                  mejor.puntaje >= 55)
