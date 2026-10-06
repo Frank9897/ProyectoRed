@@ -224,6 +224,65 @@ public class CapturadorPaquetesService
         bool lldpDetectado = false;
         string macVecinoDirecto = string.Empty;
         string origenDeteccion = string.Empty;
+        int prioridadVecinoDirecto = 0;
+
+        int ObtenerPrioridadProtocoloL2(string protocolo)
+        {
+            return protocolo switch
+            {
+                "LLDP" => 100,
+                "CDP" => 90,
+                "EDP" => 90,
+                "FDP" => 85,
+                "HPSW" => 85,
+                "NDP/HGMPv2" => 60,
+                "STP" => 50,
+                _ => 0
+            };
+        }
+
+        void RegistrarVecinoDirecto(
+            string protocolo,
+            string direccionMac,
+            string nombre,
+            bool identidadMacObjetivoCoincidente = false)
+        {
+            if (string.IsNullOrWhiteSpace(direccionMac))
+            {
+                return;
+            }
+
+            int prioridad =
+                ObtenerPrioridadProtocoloL2(protocolo);
+
+            bool debeReemplazar =
+                !vecinoDirectoDetectado ||
+                prioridad > prioridadVecinoDirecto ||
+                (prioridad == prioridadVecinoDirecto &&
+                 identidadMacObjetivoCoincidente);
+
+            vecinoDirectoDetectado = true;
+
+            if (debeReemplazar)
+            {
+                prioridadVecinoDirecto =
+                    prioridad;
+
+                macVecinoDirecto =
+                    direccionMac;
+
+                resultado.DireccionMac =
+                    direccionMac;
+            }
+
+            if (!string.IsNullOrWhiteSpace(nombre) &&
+                (debeReemplazar ||
+                 string.IsNullOrWhiteSpace(resultado.Nombre)))
+            {
+                resultado.Nombre =
+                    nombre;
+            }
+        }
 
         HashSet<uint> objetivosArpActivos =
             new HashSet<uint>();
@@ -471,15 +530,20 @@ public class CapturadorPaquetesService
                         ? macLldpChasis
                         : macLldpDirecta;
 
-                vecinoDirectoDetectado = true;
+                bool lldpMacObjetivoCoincidente =
+                    busquedaPorMac &&
+                    string.Equals(
+                        macLldpSeleccionada,
+                        macObjetivoNormalizada,
+                        StringComparison.OrdinalIgnoreCase);
+
+                RegistrarVecinoDirecto(
+                    "LLDP",
+                    macLldpSeleccionada,
+                    nombreLldpDirecto,
+                    lldpMacObjetivoCoincidente);
+
                 lldpDetectado = true;
-                macVecinoDirecto = macLldpSeleccionada;
-
-                resultado.DireccionMac =
-                    macLldpSeleccionada;
-
-                resultado.Nombre =
-                    nombreLldpDirecto ?? string.Empty;
 
                 RegistrarOrigen("LLDP");
                 RegistrarCoincidenciaMac();
@@ -511,14 +575,12 @@ public class CapturadorPaquetesService
                     out string direccionGestionHpsw) &&
                 (!busquedaPorMac || MacCoincideObjetivo(macHpsw)))
             {
-                vecinoDirectoDetectado = true;
-                macVecinoDirecto = macHpsw;
-
-                resultado.DireccionMac =
-                    macHpsw;
-
-                resultado.Nombre =
-                    nombreHpsw ?? string.Empty;
+                RegistrarVecinoDirecto(
+                    "HPSW",
+                    macHpsw,
+                    nombreHpsw,
+                    busquedaPorMac &&
+                    MacCoincideObjetivo(macHpsw));
 
                 RegistrarOrigen("HPSW");
                 RegistrarCoincidenciaMac();
@@ -549,11 +611,12 @@ public class CapturadorPaquetesService
                     out string macNdp) &&
                 (!busquedaPorMac || MacCoincideObjetivo(macNdp)))
             {
-                vecinoDirectoDetectado = true;
-                macVecinoDirecto = macNdp;
-
-                resultado.DireccionMac =
-                    macNdp;
+                RegistrarVecinoDirecto(
+                    "NDP/HGMPv2",
+                    macNdp,
+                    string.Empty,
+                    busquedaPorMac &&
+                    MacCoincideObjetivo(macNdp));
 
                 RegistrarOrigen("NDP/HGMPv2");
                 RegistrarCoincidenciaMac();
@@ -573,14 +636,12 @@ public class CapturadorPaquetesService
                     out string direccionGestionEdp) &&
                 (!busquedaPorMac || MacCoincideObjetivo(macEdp)))
             {
-                vecinoDirectoDetectado = true;
-                macVecinoDirecto = macEdp;
-
-                resultado.DireccionMac =
-                    macEdp;
-
-                resultado.Nombre =
-                    nombreEdp ?? string.Empty;
+                RegistrarVecinoDirecto(
+                    "EDP",
+                    macEdp,
+                    nombreEdp,
+                    busquedaPorMac &&
+                    MacCoincideObjetivo(macEdp));
 
                 RegistrarOrigen("EDP");
                 RegistrarCoincidenciaMac();
@@ -606,14 +667,12 @@ public class CapturadorPaquetesService
                     out string direccionGestionFdp) &&
                 (!busquedaPorMac || MacCoincideObjetivo(macFdp)))
             {
-                vecinoDirectoDetectado = true;
-                macVecinoDirecto = macFdp;
-
-                resultado.DireccionMac =
-                    macFdp;
-
-                resultado.Nombre =
-                    nombreFdp ?? string.Empty;
+                RegistrarVecinoDirecto(
+                    "FDP",
+                    macFdp,
+                    nombreFdp,
+                    busquedaPorMac &&
+                    MacCoincideObjetivo(macFdp));
 
                 RegistrarOrigen("FDP");
                 RegistrarCoincidenciaMac();
@@ -653,11 +712,12 @@ public class CapturadorPaquetesService
                                 ? macBridgeStp
                                 : macStp;
 
-                vecinoDirectoDetectado = true;
-                macVecinoDirecto = macStpSeleccionada;
-
-                resultado.DireccionMac =
-                    macStpSeleccionada;
+                RegistrarVecinoDirecto(
+                    "STP",
+                    macStpSeleccionada,
+                    string.Empty,
+                    busquedaPorMac &&
+                    MacCoincideObjetivo(macStpSeleccionada));
 
                 RegistrarOrigen("STP");
                 RegistrarCoincidenciaMac();
@@ -693,17 +753,12 @@ public class CapturadorPaquetesService
                                 ? macIdentidadCdp
                                 : macCdp;
 
-                vecinoDirectoDetectado = true;
-                macVecinoDirecto = macCdpSeleccionada;
-
-                resultado.DireccionMac =
-                    macCdpSeleccionada;
-
-                if (!string.IsNullOrWhiteSpace(nombreCdp))
-                {
-                    resultado.Nombre =
-                        nombreCdp;
-                }
+                RegistrarVecinoDirecto(
+                    "CDP",
+                    macCdpSeleccionada,
+                    nombreCdp,
+                    busquedaPorMac &&
+                    MacCoincideObjetivo(macCdpSeleccionada));
 
                 RegistrarOrigen("CDP");
                 RegistrarCoincidenciaMac();
