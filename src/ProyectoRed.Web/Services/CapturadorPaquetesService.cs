@@ -992,19 +992,19 @@ public class CapturadorPaquetesService
                                 objetivosArpLinkLocal.Count,
                                 objetivosArpRespaldo.Count));
 
-            // Si ya tenemos IP resuelta por LLDP/CDP en la fase 1, no
-            // hace falta ningún ARP: ya sabemos que es el vecino directo.
-            // Si el vecino se identificó pero todavía falta su IP (por
-            // ejemplo, LLDP sin Management Address), sí conviene lanzar
-            // el ARP: el filtro por MAC ya vigente solo va a aceptar la
-            // respuesta que venga de esa misma MAC, así que sigue siendo
-            // seguro aunque el ARP llegue hasta el gateway u otros
-            // equipos. Si no hubo ningún vecino directo, el ARP pasa a
-            // ser el único recurso disponible y el resultado deja de
-            // tener la misma garantía de "un solo salto": lo indicamos
-            // Si solo tenemos ARP, no existe confirmación física del
-            // vecino. Las respuestas se consolidan y se puntúan para
-            // escoger el candidato con mayor evidencia disponible.
+            // Si la detección automática recibió un LLDP válido, el
+            // descubrimiento termina en capa 2 aunque el anuncio no
+            // publique una Management Address. El usuario pidió que LLDP
+            // tenga prioridad absoluta en modo automático.
+            //
+            // En cambio, una búsqueda por MAC (incluido Historial → MAC)
+            // todavía necesita resolver la IPv4 cuando LLDP solo aporta
+            // identidad, por lo que en ese modo sí se permite continuar
+            // con ARP filtrado por la MAC objetivo.
+            //
+            // Para los demás protocolos L2, si no aportaron IPv4 se usa
+            // ARP como complemento. Si solo tenemos ARP, la confianza
+            // queda limitada a la evidencia disponible.
             if (busquedaPorIp)
             {
                 Console.WriteLine(
@@ -1037,15 +1037,14 @@ public class CapturadorPaquetesService
                     await Task.Delay(100);
                 }
             }
-            else if (!lldpDetectado &&
-                     (!vecinoDirectoDetectado ||
-                      string.IsNullOrWhiteSpace(
-                          resultado.DireccionIP)))
+            else if (string.IsNullOrWhiteSpace(
+                         resultado.DireccionIP) &&
+                     (busquedaPorMac || !lldpDetectado))
             {
                 Console.WriteLine(
                     busquedaPorMac
                         ? $"Búsqueda por MAC iniciada para {macObjetivoNormalizada}. Sondas: {objetivosArpActivos.Count}."
-                        : $"Sin confirmación LLDP/CDP/EDP/FDP/STP: recurriendo a ARP. Sondas: {objetivosArpActivos.Count}.");
+                        : $"Sin LLDP utilizable para finalizar: recurriendo a ARP. Sondas: {objetivosArpActivos.Count}.");
 
                 UltimaFaseDeteccion =
                     busquedaPorMac
@@ -1103,7 +1102,10 @@ public class CapturadorPaquetesService
             else
             {
                 Console.WriteLine(
-                    "IP resuelta por LLDP/CDP/EDP/FDP/STP; se omite el escaneo ARP.");
+                    lldpDetectado &&
+                    string.IsNullOrWhiteSpace(resultado.DireccionIP)
+                        ? "LLDP detectado en modo automático; se omite el escaneo ARP aunque no se haya publicado una IP."
+                        : "IP resuelta por un protocolo L2; se omite el escaneo ARP.");
             }
 
             if (objetivosArpActivos.Count == 0)
@@ -1666,32 +1668,50 @@ public class CapturadorPaquetesService
         ushort longitudEthernet =
             (ushort)((datos[12] << 8) | datos[13]);
 
+        int inicioLlc = 14;
+
         // HPSW usa una trama IEEE 802.3 con longitud, no un EtherType.
+        // Si existe una etiqueta 802.1Q/QinQ, el LLC se desplaza cuatro
+        // bytes y la longitud IEEE 802.3 se encuentra después de la etiqueta.
+        if (longitudEthernet == 0x8100 ||
+            longitudEthernet == 0x88A8)
+        {
+            if (datos.Length < 30)
+            {
+                return false;
+            }
+
+            inicioLlc = 18;
+            longitudEthernet =
+                (ushort)((datos[16] << 8) | datos[17]);
+        }
+
         if (longitudEthernet == 0 ||
-            longitudEthernet > 1500)
+            longitudEthernet > 1500 ||
+            inicioLlc + 12 > datos.Length)
         {
             return false;
         }
 
         // DSAP/SSAP 0xF8 corresponden a HP Extended LLC.
         // El bit bajo del SSAP puede variar por command/response.
-        if (datos[14] != 0xF8 ||
-            (datos[15] & 0xFE) != 0xF8)
+        if (datos[inicioLlc] != 0xF8 ||
+            (datos[inicioLlc + 1] & 0xFE) != 0xF8)
         {
             return false;
         }
 
         // El control LLC puede variar según el tipo de trama.
-        // No lo fijamos a un valor concreto porque el dissector de
-        // HP Extended LLC de Wireshark recibe el payload después del
-        // encabezado LLC para distintos tipos de tramas de información.
+        // No lo fijamos a un valor concreto.
         //
-        // HPEXT:
-        //   bytes 17-19 = reservado
-        //   bytes 20-21 = DXSAP
-        //   bytes 22-23 = SXSAP
+        // HPEXT relativo al inicio del LLC:
+        //   +3..+5 = reservado
+        //   +6..+7 = DXSAP
+        //   +8..+9 = SXSAP
+        //   +10..+11 = Version/Type
         ushort dxsap =
-            (ushort)((datos[20] << 8) | datos[21]);
+            (ushort)((datos[inicioLlc + 6] << 8) |
+                     datos[inicioLlc + 7]);
 
         if (dxsap != 0x0623)
         {
@@ -1703,12 +1723,11 @@ public class CapturadorPaquetesService
                 new PhysicalAddress(
                     datos.Skip(6).Take(6).ToArray()));
 
-        int posicion = 24;
+        int posicion =
+            inicioLlc + 12;
 
-        // En HPSW los primeros dos bytes son Version y Type.
-        // Después comienza una secuencia de TLV de 1 byte de tipo +
-        // 1 byte de longitud + valor.
-        posicion += 2;
+        // Después de Version/Type comienza una secuencia de TLV de
+        // 1 byte de tipo + 1 byte de longitud + valor.
 
         while (posicion + 2 <= datos.Length)
         {
@@ -1880,7 +1899,22 @@ public class CapturadorPaquetesService
         ushort longitud =
             (ushort)((datos[12] << 8) | datos[13]);
 
-        if (longitud > 1500)
+        if (longitud == 0x8100 ||
+            longitud == 0x88A8)
+        {
+            if (datos.Length < 38)
+            {
+                return false;
+            }
+
+            inicioLlc = 18;
+            longitud =
+                (ushort)((datos[16] << 8) | datos[17]);
+        }
+
+        if (longitud == 0 ||
+            longitud > 1500 ||
+            inicioLlc + 8 > datos.Length)
         {
             return false;
         }
@@ -2095,26 +2129,48 @@ public class CapturadorPaquetesService
         nombreDispositivo = null;
         direccionGestion = null;
 
-        const int longitudMinima = 26;
-
         if (datos == null ||
-            datos.Length < longitudMinima)
+            datos.Length < 26)
         {
             return;
         }
 
-        if (datos[14] != 0xAA ||
-            datos[15] != 0xAA ||
-            datos[16] != 0x03)
+        int inicioLlc = 14;
+
+        ushort tipoEthernet =
+            (ushort)((datos[12] << 8) | datos[13]);
+
+        if (tipoEthernet == 0x8100 ||
+            tipoEthernet == 0x88A8)
+        {
+            if (datos.Length < 30)
+            {
+                return;
+            }
+
+            inicioLlc = 18;
+            tipoEthernet =
+                (ushort)((datos[16] << 8) | datos[17]);
+        }
+
+        if (tipoEthernet > 1500 ||
+            inicioLlc + 12 > datos.Length)
         {
             return;
         }
 
-        if (datos[17] != 0x00 ||
-            datos[18] != 0x00 ||
-            datos[19] != 0x0C ||
-            datos[20] != 0x20 ||
-            datos[21] != 0x00)
+        if (datos[inicioLlc] != 0xAA ||
+            datos[inicioLlc + 1] != 0xAA ||
+            datos[inicioLlc + 2] != 0x03)
+        {
+            return;
+        }
+
+        if (datos[inicioLlc + 3] != 0x00 ||
+            datos[inicioLlc + 4] != 0x00 ||
+            datos[inicioLlc + 5] != 0x0C ||
+            datos[inicioLlc + 6] != 0x20 ||
+            datos[inicioLlc + 7] != 0x00)
         {
             return;
         }
@@ -2124,7 +2180,8 @@ public class CapturadorPaquetesService
                 new PhysicalAddress(
                     datos.Skip(6).Take(6).ToArray()));
 
-        int posicion = 26;
+        int posicion =
+            inicioLlc + 12;
 
         while (posicion + 4 <= datos.Length)
         {
