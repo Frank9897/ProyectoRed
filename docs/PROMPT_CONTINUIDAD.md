@@ -188,6 +188,7 @@ La optimización se realiza sin cambiar la estrategia de fiabilidad del descubri
 - La MAC anunciada por L2 no debe ser un filtro absoluto para la ARP automática: si coincide, la evidencia es fuerte; si no coincide, las candidatas ARP siguen disponibles para recuperar la IPv4 del vecino.
 - LLDP tiene prioridad en la detección automática: si se recibe un anuncio LLDP válido, se termina esa ruta de descubrimiento sin ejecutar el sondeo ARP automático. Su Management Address IPv4, cuando está presente, se usa directamente.
 - En búsqueda por MAC, una trama LLDP se considera coincidente si la MAC objetivo coincide con la MAC Ethernet de origen o con un Chassis ID LLDP de subtipo MAC. Si LLDP coincide pero no publica una IPv4, la búsqueda por MAC continúa mediante ARP filtrado por la MAC objetivo.
+- En CDP, la búsqueda por MAC también puede usar un Device-ID binario de seis bytes cuando representa la MAC del chasis. En STP/RSTP/MSTP se puede usar además la MAC del Bridge Identifier. EDP usa el Switch ID/MAC del propio encabezado y HPSW prioriza su Own MAC Address; FDP y NDP conservan la MAC de origen.
 
 ## Estado actual
 
