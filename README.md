@@ -168,6 +168,7 @@ La lógica de descubrimiento mantiene intacta la estrategia de fiabilidad y solo
 - EDP ya utiliza el Switch ID/MAC del encabezado EDP; HPSW prioriza el Own MAC Address publicado por su TLV; FDP y NDP conservan la MAC de origen como identidad del vecino en la implementación actual.
 - Cuando llegan anuncios de varios protocolos L2 durante la misma captura, ProyectoRed conserva la identidad del protocolo con mayor prioridad en lugar de reemplazarla con una señal más débil. La prioridad actual es LLDP, luego CDP/EDP, FDP/HPSW, NDP/HGMPv2 y finalmente STP. Esto evita que un BPDU posterior desplace una identidad LLDP ya establecida.
 - La IPv4 aportada directamente por un protocolo L2 se conserva como candidato junto con su protocolo de origen. Al terminar la fase de escucha se elige la dirección de mayor prioridad, en lugar de aceptar simplemente la primera trama que llegó. Cuando la IPv4 ya fue resuelta por L2, no se construyen ni envían objetivos ARP innecesarios; cuando LLDP está presente en automático sin IP, se mantiene la regla de finalizar sin ARP.
+- Las solicitudes ARP pasivas solo se consideran evidencia útil cuando el equipo remoto está consultando la IPv4 propia de la PC. Esto evita incorporar a la heurística solicitudes broadcast dirigidas a otros equipos de un switch compartido.
 
 ## Tecnologías
 
