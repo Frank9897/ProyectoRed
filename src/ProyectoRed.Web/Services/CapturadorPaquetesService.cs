@@ -334,52 +334,6 @@ public class CapturadorPaquetesService
             }
         }
 
-        void AplicarDireccionGestionL2()
-        {
-            (string protocolo, string ip, int prioridad, int orden)? mejor = null;
-
-            lock (sincronizacionGestionL2)
-            {
-                if (direccionesGestionL2.Count > 0)
-                {
-                    mejor =
-                        direccionesGestionL2
-                            .OrderByDescending(
-                                candidato => candidato.prioridad)
-                            .ThenBy(
-                                candidato => candidato.orden)
-                            .First();
-                }
-            }
-
-            if (mejor == null)
-            {
-                return;
-            }
-
-            resultado.DireccionIP =
-                mejor.Value.ip;
-
-            UltimaConfianzaDeteccion =
-                busquedaPorMac
-                    ? (usoMacDelHistorial
-                        ? "Confirmado por MAC del historial y protocolo L2"
-                        : "Confirmado por MAC objetivo y protocolo L2")
-                    : "Confirmado por protocolo L2";
-
-            UltimoPuntajeDeteccion =
-                100 +
-                mejor.Value.prioridad;
-
-            UltimaRazonDeteccion =
-                $"IPv4 proporcionada directamente por {mejor.Value.protocolo}. " +
-                $"Se priorizó la señal L2 con prioridad {mejor.Value.prioridad}.";
-
-            RegistrarFabricante(
-                _fabricanteMacService.ObtenerFabricante(
-                    resultado.DireccionMac));
-        }
-
         HashSet<uint> objetivosArpActivos =
             new HashSet<uint>();
 
@@ -448,6 +402,53 @@ public class CapturadorPaquetesService
                     : busquedaPorIp
                         ? "IP"
                         : "Automática";
+
+        void AplicarDireccionGestionL2()
+        {
+            (string protocolo, string ip, int prioridad, int orden)? mejor = null;
+
+            lock (sincronizacionGestionL2)
+            {
+                if (direccionesGestionL2.Count > 0)
+                {
+                    mejor =
+                        direccionesGestionL2
+                            .OrderByDescending(
+                                candidato => candidato.prioridad)
+                            .ThenBy(
+                                candidato => candidato.orden)
+                            .First();
+                }
+            }
+
+            if (mejor == null)
+            {
+                return;
+            }
+
+            resultado.DireccionIP =
+                mejor.Value.ip;
+
+            UltimaConfianzaDeteccion =
+                busquedaPorMac
+                    ? (usoMacDelHistorial
+                        ? "Confirmado por MAC del historial y protocolo L2"
+                        : "Confirmado por MAC objetivo y protocolo L2")
+                    : "Confirmado por protocolo L2";
+
+            UltimoPuntajeDeteccion =
+                100 +
+                mejor.Value.prioridad;
+
+            UltimaRazonDeteccion =
+                $"IPv4 proporcionada directamente por {mejor.Value.protocolo}. " +
+                $"Se priorizó la señal L2 con prioridad {mejor.Value.prioridad}.";
+
+            RegistrarFabricante(
+                _fabricanteMacService.ObtenerFabricante(
+                    resultado.DireccionMac));
+        }
+
 
         HashSet<string> ipsHistoricas =
             historial
