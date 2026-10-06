@@ -278,6 +278,12 @@ public class HomeController : Controller
                 StringComparison.OrdinalIgnoreCase) ||
             origen.Contains(
                 "FDP",
+                StringComparison.OrdinalIgnoreCase) ||
+            origen.Contains(
+                "NDP",
+                StringComparison.OrdinalIgnoreCase) ||
+            origen.Contains(
+                "HPSW",
                 StringComparison.OrdinalIgnoreCase))
         {
             return origen +
