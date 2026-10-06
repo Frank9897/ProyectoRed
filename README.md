@@ -166,6 +166,7 @@ La lógica de descubrimiento mantiene intacta la estrategia de fiabilidad y solo
 - En CDP, la MAC Ethernet de origen y un Device-ID binario de seis bytes pueden actuar como identidades para la búsqueda por MAC. El Device-ID de CDP no siempre es una MAC: también puede ser nombre de sistema o número de serie.
 - En STP/RSTP/MSTP, la búsqueda por MAC puede comparar la MAC Ethernet de origen y la MAC contenida en el Bridge Identifier de la BPDU. STP no aporta por sí mismo una IPv4 de administración, por lo que continúa con ARP cuando sea necesario.
 - EDP ya utiliza el Switch ID/MAC del encabezado EDP; HPSW prioriza el Own MAC Address publicado por su TLV; FDP y NDP conservan la MAC de origen como identidad del vecino en la implementación actual.
+- Cuando llegan anuncios de varios protocolos L2 durante la misma captura, ProyectoRed conserva la identidad del protocolo con mayor prioridad en lugar de reemplazarla con una señal más débil. La prioridad actual es LLDP, luego CDP/EDP, FDP/HPSW, NDP/HGMPv2 y finalmente STP. Esto evita que un BPDU posterior desplace una identidad LLDP ya establecida.
 
 ## Tecnologías
 
