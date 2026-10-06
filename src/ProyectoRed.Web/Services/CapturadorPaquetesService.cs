@@ -644,11 +644,14 @@ public class CapturadorPaquetesService
             {
                 string macStpSeleccionada =
                     busquedaPorMac &&
-                    MacCoincideObjetivo(macBridgeStp)
-                        ? macBridgeStp
-                        : !string.IsNullOrWhiteSpace(macBridgeStp)
+                    MacCoincideObjetivo(macStp)
+                        ? macStp
+                        : busquedaPorMac &&
+                          MacCoincideObjetivo(macBridgeStp)
                             ? macBridgeStp
-                            : macStp;
+                            : !string.IsNullOrWhiteSpace(macBridgeStp)
+                                ? macBridgeStp
+                                : macStp;
 
                 vecinoDirectoDetectado = true;
                 macVecinoDirecto = macStpSeleccionada;
@@ -681,11 +684,14 @@ public class CapturadorPaquetesService
             {
                 string macCdpSeleccionada =
                     busquedaPorMac &&
-                    MacCoincideObjetivo(macIdentidadCdp)
-                        ? macIdentidadCdp
-                        : !string.IsNullOrWhiteSpace(macIdentidadCdp)
+                    MacCoincideObjetivo(macCdp)
+                        ? macCdp
+                        : busquedaPorMac &&
+                          MacCoincideObjetivo(macIdentidadCdp)
                             ? macIdentidadCdp
-                            : macCdp;
+                            : !string.IsNullOrWhiteSpace(macIdentidadCdp)
+                                ? macIdentidadCdp
+                                : macCdp;
 
                 vecinoDirectoDetectado = true;
                 macVecinoDirecto = macCdpSeleccionada;
