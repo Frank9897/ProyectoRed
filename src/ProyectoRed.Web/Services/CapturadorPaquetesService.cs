@@ -284,6 +284,102 @@ public class CapturadorPaquetesService
             }
         }
 
+        List<(string protocolo, string ip, int prioridad, int orden)> direccionesGestionL2 =
+            new List<(string protocolo, string ip, int prioridad, int orden)>();
+
+        object sincronizacionGestionL2 =
+            new object();
+
+        int ordenDireccionGestionL2 = 0;
+
+        void RegistrarDireccionGestionL2(
+            string protocolo,
+            string direccionIP)
+        {
+            if (string.IsNullOrWhiteSpace(direccionIP) ||
+                !IPAddress.TryParse(
+                    direccionIP,
+                    out IPAddress ip) ||
+                ip.AddressFamily != AddressFamily.InterNetwork ||
+                EsDireccionEspecial(ip))
+            {
+                return;
+            }
+
+            int prioridad =
+                ObtenerPrioridadProtocoloL2(protocolo);
+
+            lock (sincronizacionGestionL2)
+            {
+                if (direccionesGestionL2.Any(
+                        candidato =>
+                            candidato.protocolo.Equals(
+                                protocolo,
+                                StringComparison.OrdinalIgnoreCase) &&
+                            candidato.ip.Equals(
+                                ip.ToString(),
+                                StringComparison.OrdinalIgnoreCase)))
+                {
+                    return;
+                }
+
+                direccionesGestionL2.Add(
+                    (protocolo,
+                     ip.ToString(),
+                     prioridad,
+                     ordenDireccionGestionL2++));
+
+                Console.WriteLine(
+                    $"IPv4 directa detectada por {protocolo}: {ip}");
+            }
+        }
+
+        void AplicarDireccionGestionL2()
+        {
+            (string protocolo, string ip, int prioridad, int orden)? mejor = null;
+
+            lock (sincronizacionGestionL2)
+            {
+                if (direccionesGestionL2.Count > 0)
+                {
+                    mejor =
+                        direccionesGestionL2
+                            .OrderByDescending(
+                                candidato => candidato.prioridad)
+                            .ThenBy(
+                                candidato => candidato.orden)
+                            .First();
+                }
+            }
+
+            if (mejor == null)
+            {
+                return;
+            }
+
+            resultado.DireccionIP =
+                mejor.Value.ip;
+
+            UltimaConfianzaDeteccion =
+                busquedaPorMac
+                    ? (usoMacDelHistorial
+                        ? "Confirmado por MAC del historial y protocolo L2"
+                        : "Confirmado por MAC objetivo y protocolo L2")
+                    : "Confirmado por protocolo L2";
+
+            UltimoPuntajeDeteccion =
+                100 +
+                mejor.Value.prioridad;
+
+            UltimaRazonDeteccion =
+                $"IPv4 proporcionada directamente por {mejor.Value.protocolo}. " +
+                $"Se priorizó la señal L2 con prioridad {mejor.Value.prioridad}.";
+
+            RegistrarFabricante(
+                _fabricanteMacService.ObtenerFabricante(
+                    resultado.DireccionMac));
+        }
+
         HashSet<uint> objetivosArpActivos =
             new HashSet<uint>();
 
@@ -557,8 +653,9 @@ public class CapturadorPaquetesService
                 if (!string.IsNullOrWhiteSpace(direccionGestionLldp) &&
                     !busquedaPorIp)
                 {
-                    resultado.DireccionIP =
-                        direccionGestionLldp;
+                    RegistrarDireccionGestionL2(
+                        "LLDP",
+                        direccionGestionLldp);
 
                     return;
                 }
@@ -591,8 +688,9 @@ public class CapturadorPaquetesService
                 if (!string.IsNullOrWhiteSpace(direccionGestionHpsw) &&
                     !busquedaPorIp)
                 {
-                    resultado.DireccionIP =
-                        direccionGestionHpsw;
+                    RegistrarDireccionGestionL2(
+                        "HPSW",
+                        direccionGestionHpsw);
 
                     return;
                 }
@@ -653,8 +751,9 @@ public class CapturadorPaquetesService
                 if (!string.IsNullOrWhiteSpace(direccionGestionEdp) &&
                     !busquedaPorIp)
                 {
-                    resultado.DireccionIP =
-                        direccionGestionEdp;
+                    RegistrarDireccionGestionL2(
+                        "EDP",
+                        direccionGestionEdp);
 
                     return;
                 }
@@ -683,8 +782,9 @@ public class CapturadorPaquetesService
                 if (!string.IsNullOrWhiteSpace(direccionGestionFdp) &&
                     !busquedaPorIp)
                 {
-                    resultado.DireccionIP =
-                        direccionGestionFdp;
+                    RegistrarDireccionGestionL2(
+                        "FDP",
+                        direccionGestionFdp);
 
                     return;
                 }
@@ -771,8 +871,9 @@ public class CapturadorPaquetesService
                 if (!string.IsNullOrWhiteSpace(direccionGestionCdp) &&
                     !busquedaPorIp)
                 {
-                    resultado.DireccionIP =
-                        direccionGestionCdp;
+                    RegistrarDireccionGestionL2(
+                        "CDP",
+                        direccionGestionCdp);
 
                     return;
                 }
@@ -993,6 +1094,17 @@ public class CapturadorPaquetesService
                     () => vecinoDirectoDetectado,
                     TimeSpan.FromSeconds(6));
 
+                // Si el primer anuncio no fue LLDP, damos una ventana breve
+                // para que un protocolo L2 de mayor prioridad llegue en la
+                // misma captura antes de fijar la IP directa.
+                if (vecinoDirectoDetectado &&
+                    !lldpDetectado)
+                {
+                    await Task.Delay(300);
+                }
+
+                AplicarDireccionGestionL2();
+
                 if (lldpDetectado)
                 {
                     Console.WriteLine(
@@ -1001,7 +1113,7 @@ public class CapturadorPaquetesService
                 else if (vecinoDirectoDetectado)
                 {
                     Console.WriteLine(
-                        "Vecino directo confirmado por otro protocolo L2; se continúa con ARP si hace falta la IPv4.");
+                        "Vecino directo confirmado por protocolo L2; se continúa con ARP solo si todavía falta la IPv4.");
                 }
             }
 
