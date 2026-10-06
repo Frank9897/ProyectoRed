@@ -191,6 +191,7 @@ La optimización se realiza sin cambiar la estrategia de fiabilidad del descubri
 - En CDP, la búsqueda por MAC también puede usar una MAC expresada dentro del Device-ID textual cuando ese texto tiene formato de MAC. En STP/RSTP/MSTP se puede usar además la MAC del Bridge Identifier. EDP usa el Switch ID/MAC del propio encabezado y HPSW prioriza su Own MAC Address; FDP y NDP conservan la MAC de origen.
 - Si durante una misma captura llegan varios protocolos L2, se conserva la identidad del protocolo de mayor prioridad para no reemplazar una identificación fuerte con una señal más débil. La prioridad implementada es LLDP, CDP/EDP, FDP/HPSW, NDP/HGMPv2 y STP.
 - Las IPv4 anunciadas directamente por protocolos L2 se almacenan como candidatos y se resuelven al finalizar la fase de escucha según la prioridad del protocolo. No se usa automáticamente la primera IP recibida. Si ya existe una IPv4 directa o LLDP terminó la ruta automática, no se preparan ni ejecutan objetivos ARP innecesarios.
+- Las solicitudes ARP pasivas se aceptan como evidencia solo cuando su Target Protocol Address corresponde a la IPv4 de la PC. No se deben contabilizar broadcasts ARP destinados a otros hosts como candidatos del dispositivo.
 
 ## Estado actual
 
