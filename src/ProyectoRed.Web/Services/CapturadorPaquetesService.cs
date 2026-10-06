@@ -727,6 +727,7 @@ public class CapturadorPaquetesService
 
                 // STP/RSTP aporta identidad del puente, pero no una
                 // IPv4 de administración. La detección continúa con ARP.
+            }
 
             // CDP identifica de la misma forma al vecino Cisco y, cuando
             // el anuncio contiene direcciones, puede aportar la IP.
