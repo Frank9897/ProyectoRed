@@ -636,41 +636,62 @@ public class CapturadorPaquetesService
             // como tráfico IP por otros switches.
             if (IntentarExtraerInformacionStp(
                     capturaBruta.Data,
-                    out string macStp) &&
-                (!busquedaPorMac || MacCoincideObjetivo(macStp)))
+                    out string macStp,
+                    out string macBridgeStp) &&
+                (!busquedaPorMac ||
+                 MacCoincideObjetivo(macStp) ||
+                 MacCoincideObjetivo(macBridgeStp)))
             {
+                string macStpSeleccionada =
+                    busquedaPorMac &&
+                    MacCoincideObjetivo(macBridgeStp)
+                        ? macBridgeStp
+                        : !string.IsNullOrWhiteSpace(macBridgeStp)
+                            ? macBridgeStp
+                            : macStp;
+
                 vecinoDirectoDetectado = true;
-                macVecinoDirecto = macStp;
+                macVecinoDirecto = macStpSeleccionada;
 
                 resultado.DireccionMac =
-                    macStp;
+                    macStpSeleccionada;
 
                 RegistrarOrigen("STP");
                 RegistrarCoincidenciaMac();
                 RegistrarFabricante(
                     _fabricanteMacService.ObtenerFabricante(
-                        macStp));
+                        macStpSeleccionada));
 
-                return;
-            }
+                // STP/RSTP aporta identidad del puente, pero no una
+                // IPv4 de administración. La detección continúa con ARP.
 
             // CDP identifica de la misma forma al vecino Cisco y, cuando
             // el anuncio contiene direcciones, puede aportar la IP.
             IntentarExtraerInformacionCdp(
                 capturaBruta.Data,
                 out string macCdp,
+                out string macIdentidadCdp,
                 out string nombreCdp,
                 out string direccionGestionCdp);
 
             if (!string.IsNullOrWhiteSpace(macCdp) &&
                 (!busquedaPorMac ||
-                 MacCoincideObjetivo(macCdp)))
+                 MacCoincideObjetivo(macCdp) ||
+                 MacCoincideObjetivo(macIdentidadCdp)))
             {
+                string macCdpSeleccionada =
+                    busquedaPorMac &&
+                    MacCoincideObjetivo(macIdentidadCdp)
+                        ? macIdentidadCdp
+                        : !string.IsNullOrWhiteSpace(macIdentidadCdp)
+                            ? macIdentidadCdp
+                            : macCdp;
+
                 vecinoDirectoDetectado = true;
-                macVecinoDirecto = macCdp;
+                macVecinoDirecto = macCdpSeleccionada;
 
                 resultado.DireccionMac =
-                    macCdp;
+                    macCdpSeleccionada;
 
                 if (!string.IsNullOrWhiteSpace(nombreCdp))
                 {
@@ -682,7 +703,7 @@ public class CapturadorPaquetesService
                 RegistrarCoincidenciaMac();
                 RegistrarFabricante(
                     _fabricanteMacService.ObtenerFabricante(
-                        macCdp));
+                        macCdpSeleccionada));
                 RegistrarFabricante("Cisco Systems");
 
                 if (!string.IsNullOrWhiteSpace(direccionGestionCdp) &&
@@ -2080,9 +2101,11 @@ public class CapturadorPaquetesService
 
     private bool IntentarExtraerInformacionStp(
         byte[] datos,
-        out string macOrigen)
+        out string macOrigen,
+        out string macBridge)
     {
         macOrigen = null;
+        macBridge = null;
 
         if (datos == null ||
             datos.Length < 20)
@@ -2144,16 +2167,34 @@ public class CapturadorPaquetesService
                 new PhysicalAddress(
                     datos.Skip(6).Take(6).ToArray()));
 
+        // Bridge Identifier: prioridad/sistema (2 bytes) + MAC (6 bytes).
+        // Esta MAC identifica al puente emisor de la BPDU.
+        int inicioBridgeId =
+            inicioBpdu + 16;
+
+        if (inicioBridgeId + 8 <= datos.Length)
+        {
+            macBridge =
+                FormatearMac(
+                    new PhysicalAddress(
+                        datos.AsSpan(
+                                inicioBridgeId + 2,
+                                6)
+                            .ToArray()));
+        }
+
         return true;
     }
 
     private void IntentarExtraerInformacionCdp(
         byte[] datos,
         out string macOrigen,
+        out string macIdentidad,
         out string nombreDispositivo,
         out string direccionGestion)
     {
         macOrigen = null;
+        macIdentidad = null;
         nombreDispositivo = null;
         direccionGestion = null;
 
@@ -2233,16 +2274,54 @@ public class CapturadorPaquetesService
             int longitudValor =
                 longitudTlv - 4;
 
-            // 0x0001 = Device-ID.
+            // 0x0001 = Device-ID. Cisco permite que este identificador
+            // sea MAC del chasis, número de serie o nombre del sistema.
+            // Cuando el Device-ID tiene formato MAC binario, lo conservamos
+            // como identidad adicional para la búsqueda por MAC.
             if (tipoTlv == 0x0001 &&
                 longitudValor > 0)
             {
-                nombreDispositivo =
-                    System.Text.Encoding.ASCII.GetString(
-                        datos,
-                        inicioValor,
-                        longitudValor)
-                    .TrimEnd('\0');
+                if (longitudValor == 6)
+                {
+                    byte[] macBytes =
+                        datos.AsSpan(
+                                inicioValor,
+                                6)
+                            .ToArray();
+
+                    bool macUnicast =
+                        (macBytes[0] & 0x01) == 0;
+
+                    bool macNoNula =
+                        macBytes.Any(
+                            byteMac =>
+                                byteMac != 0x00);
+
+                    bool macNoBroadcast =
+                        macBytes.Any(
+                            byteMac =>
+                                byteMac != 0xFF);
+
+                    if (macUnicast &&
+                        macNoNula &&
+                        macNoBroadcast)
+                    {
+                        macIdentidad =
+                            FormatearMac(
+                                new PhysicalAddress(
+                                    macBytes));
+                    }
+                }
+
+                if (macIdentidad == null)
+                {
+                    nombreDispositivo =
+                        System.Text.Encoding.ASCII.GetString(
+                            datos,
+                            inicioValor,
+                            longitudValor)
+                        .TrimEnd('\0');
+                }
             }
 
             // 0x0002 = Address TLV. El valor comienza con la cantidad
