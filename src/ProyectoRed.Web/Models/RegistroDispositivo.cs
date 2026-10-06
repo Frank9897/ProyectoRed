@@ -6,6 +6,6 @@ public class RegistroDispositivo
     public string DireccionMac { get; set; } = string.Empty;
     public string Nombre { get; set; } = string.Empty;
     public string NombreInterfaz { get; set; } = string.Empty;
-    public string Origen { get; set; } = string.Empty; // "ARP", "LLDP" o "CDP"
+    public string Origen { get; set; } = string.Empty;
     public DateTime FechaDeteccion { get; set; }
 }
