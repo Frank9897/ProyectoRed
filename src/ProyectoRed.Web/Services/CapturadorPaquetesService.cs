@@ -946,29 +946,21 @@ public class CapturadorPaquetesService
                 return;
             }
 
-            // Una solicitud ARP del vecino también puede revelar
-            // directamente su IPv4 de origen. Es especialmente útil
-            // cuando el equipo anuncia quién es mediante tráfico ARP
-            // pero no tiene LLDP/CDP.
+            // Una solicitud ARP del vecino puede revelar su IPv4 de
+            // origen, pero solo la consideramos una señal útil cuando
+            // la solicitud está dirigida a nuestra propia IPv4. Esto evita
+            // contaminar la heurística con broadcasts ARP de otros equipos
+            // visibles en un switch compartido.
             if (arp.Operation == ArpOperation.Request &&
                 !EsDireccionEspecial(
                     arp.SenderProtocolAddress))
             {
-                if (vecinoDirectoDetectado &&
-                    string.Equals(
-                        macFuenteArp,
-                        macVecinoDirecto,
-                        StringComparison.OrdinalIgnoreCase))
+                bool solicitudDirigidaANosotros =
+                    EsNuestraIp(
+                        arp.TargetProtocolAddress);
+
+                if (!solicitudDirigidaANosotros)
                 {
-                    RegistrarRespuestaArp(
-                        arp.SenderProtocolAddress,
-                        macFuenteArp);
-
-                    RegistrarOrigen("ARP");
-                    RegistrarFabricante(
-                        _fabricanteMacService.ObtenerFabricante(
-                            macFuenteArp));
-
                     return;
                 }
 
