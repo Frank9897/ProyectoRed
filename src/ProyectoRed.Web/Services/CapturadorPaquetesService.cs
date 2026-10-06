@@ -1345,6 +1345,15 @@ public class CapturadorPaquetesService
                 new PhysicalAddress(
                     datos.Skip(6).Take(6).ToArray()));
 
+        bool tieneChassisId =
+            false;
+
+        bool tienePortId =
+            false;
+
+        bool tieneTtl =
+            false;
+
         int posicion =
             desplazamientoEthernet;
 
@@ -1372,21 +1381,41 @@ public class CapturadorPaquetesService
                 return true;
             }
 
-            // Tipo 1 = Chassis ID. Subtipo 4 identifica una
-            // dirección MAC del sistema/chasis. La conservamos además
-            // de la MAC Ethernet de origen porque en algunos equipos
-            // pueden no ser exactamente la misma.
+            // Tipo 1 = Chassis ID, obligatorio en una LLDPDU.
             if (tipo == 1 &&
-                longitud >= 7 &&
-                datos[posicion] == 4)
+                longitud >= 2)
             {
-                macChasis =
-                    FormatearMac(
-                        new PhysicalAddress(
-                            datos.AsSpan(
-                                    posicion + 1,
-                                    6)
-                                .ToArray()));
+                tieneChassisId =
+                    true;
+
+                // Subtipo 4 = MAC del chasis/sistema.
+                if (longitud >= 7 &&
+                    datos[posicion] == 4)
+                {
+                    macChasis =
+                        FormatearMac(
+                            new PhysicalAddress(
+                                datos.AsSpan(
+                                        posicion + 1,
+                                        6)
+                                    .ToArray()));
+                }
+            }
+
+            // Tipo 2 = Port ID, obligatorio en una LLDPDU.
+            if (tipo == 2 &&
+                longitud >= 2)
+            {
+                tienePortId =
+                    true;
+            }
+
+            // Tipo 3 = TTL, obligatorio y de dos bytes.
+            if (tipo == 3 &&
+                longitud == 2)
+            {
+                tieneTtl =
+                    true;
             }
 
             // Tipo 5 = System Name.
@@ -1425,7 +1454,9 @@ public class CapturadorPaquetesService
             posicion += longitud;
         }
 
-        return true;
+        return tieneChassisId &&
+               tienePortId &&
+               tieneTtl;
     }
 
     private bool IntentarExtraerInformacionEdp(
@@ -2101,6 +2132,17 @@ public class CapturadorPaquetesService
 
         if (datos == null ||
             datos.Length < 26)
+        {
+            return;
+        }
+
+        // CDP se anuncia a 01:00:0C:CC:CC:CC.
+        if (datos[0] != 0x01 ||
+            datos[1] != 0x00 ||
+            datos[2] != 0x0C ||
+            datos[3] != 0xCC ||
+            datos[4] != 0xCC ||
+            datos[5] != 0xCC)
         {
             return;
         }
