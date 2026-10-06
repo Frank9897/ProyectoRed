@@ -621,8 +621,9 @@ public class CapturadorPaquetesService
                  MacCoincideObjetivo(macLldpChasis)))
             {
                 string macLldpSeleccionada =
-                    busquedaPorMac &&
-                    MacCoincideObjetivo(macLldpChasis)
+                    !string.IsNullOrWhiteSpace(macLldpChasis) &&
+                    (!busquedaPorMac ||
+                     MacCoincideObjetivo(macLldpChasis))
                         ? macLldpChasis
                         : macLldpDirecta;
 
